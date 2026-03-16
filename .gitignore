@@ -1,0 +1,13 @@
+# Runtime and experiment artifacts
+cache/*
+logs/*
+models/*
+backtests/*
+data/*
+
+# Keep directory structure in version control
+!cache/.gitkeep
+!logs/.gitkeep
+!models/.gitkeep
+!backtests/.gitkeep
+!data/.gitkeep
