@@ -10,6 +10,10 @@ Institutional-grade distributed trading platform scaffold with microservices, Ka
 - **US30 strategies:** liquidity sweep reversal, VWAP continuation, ORB, orderflow imbalance breakout, volatility expansion breakout, liquidity-zone mean reversion.
 - **Observability:** Prometheus, Grafana, Alertmanager dashboards and alerts.
 
+## Repository layout
+
+This repository keeps experiment output folders (`backtests/`, `cache/`, `data/`, `logs/`, and `models/`) in place, while ignoring generated artifacts inside them.
+
 ## Run locally
 ```bash
 docker compose up --build
