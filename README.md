@@ -9,6 +9,7 @@ Institutional-grade distributed trading platform scaffold with microservices, Ka
 - **Research:** GPU Monte Carlo (50k+ paths), PPO and DQN agent templates, regime detection models.
 - **US30 strategies:** liquidity sweep reversal, VWAP continuation, ORB, orderflow imbalance breakout, volatility expansion breakout, liquidity-zone mean reversion.
 - **Observability:** Prometheus, Grafana, Alertmanager dashboards and alerts.
+- **Ops UI:** interactive ΩMEGA PRIME ∆ 2026 terminal (`http://localhost:3000`) and control panel (`http://localhost:3001`) with machine APIs at `/api/widgets` and `/api/actions`.
 
 ## Repository layout
 
