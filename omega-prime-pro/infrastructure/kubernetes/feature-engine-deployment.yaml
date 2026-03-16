@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: feature-engine
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: feature-engine
+  template:
+    metadata:
+      labels:
+        app: feature-engine
+    spec:
+      containers:
+      - name: feature-engine
+        image: omega-prime/feature-engine:latest
+        ports:
+        - containerPort: 8000

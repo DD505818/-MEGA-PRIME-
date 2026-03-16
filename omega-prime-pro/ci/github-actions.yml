@@ -1,0 +1,13 @@
+name: omega-prime-ci
+on: [push, pull_request]
+jobs:
+  build-test-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build images
+        run: echo "docker build stubs"
+      - name: Run tests
+        run: pytest -q
+      - name: Deploy to k8s
+        run: echo "kubectl apply -f infrastructure/kubernetes"

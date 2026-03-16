@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: risk-engine
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: risk-engine
+  template:
+    metadata:
+      labels:
+        app: risk-engine
+    spec:
+      containers:
+      - name: risk-engine
+        image: omega-prime/risk-engine:latest
+        ports:
+        - containerPort: 8000
