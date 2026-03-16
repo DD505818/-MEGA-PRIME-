@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backtesting-cluster
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backtesting-cluster
+  template:
+    metadata:
+      labels:
+        app: backtesting-cluster
+    spec:
+      containers:
+      - name: backtesting-cluster
+        image: omega-prime/backtesting-cluster:latest
+        ports:
+        - containerPort: 8000

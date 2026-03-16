@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: backtesting-cluster
+spec:
+  selector:
+    app: backtesting-cluster
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8000

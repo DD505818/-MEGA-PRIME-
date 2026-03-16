@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: feature-engine
+spec:
+  selector:
+    app: feature-engine
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8000

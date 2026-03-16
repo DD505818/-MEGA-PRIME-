@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rl-agent-cluster
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rl-agent-cluster
+  template:
+    metadata:
+      labels:
+        app: rl-agent-cluster
+    spec:
+      containers:
+      - name: rl-agent-cluster
+        image: omega-prime/rl-agent-cluster:latest
+        ports:
+        - containerPort: 8000

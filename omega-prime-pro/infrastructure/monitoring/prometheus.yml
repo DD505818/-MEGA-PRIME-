@@ -1,0 +1,6 @@
+global:
+  scrape_interval: 15s
+scrape_configs:
+  - job_name: omega-services
+    static_configs:
+      - targets: ['market-data-service:8000', 'risk-engine:8000', 'portfolio-service:8000']
