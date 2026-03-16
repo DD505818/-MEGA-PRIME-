@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: execution-router
+  namespace: omega-prime
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: execution-router
+  template:
+    metadata:
+      labels:
+        app: execution-router
+    spec:
+      containers:
+        - name: execution-router
+          image: omega-prime/execution-router:latest
+          ports:
+            - containerPort: 8000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: execution-router
+  namespace: omega-prime
+spec:
+  selector:
+    app: execution-router
+  ports:
+    - port: 8000
+      targetPort: 8000
