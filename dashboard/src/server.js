@@ -82,11 +82,63 @@ app.get("/", (_req, res) => {
     .map(
       (item) => `<li><label>${item.bucket} <span>${item.percent}%</span></label><div class="bar"><i style="width:${item.percent}%"></i></div></li>`
     )
+const widgets = [
+  "Multi-chart trading terminal",
+  "Portfolio metrics",
+  "Strategy performance",
+  "AI agent monitoring",
+  "Risk metrics",
+  "Execution logs",
+  "Orderbook heatmap",
+  "Wallet & fund management",
+  "AI predictions",
+  "Social sentiment",
+  "On-chain analytics"
+];
+
+const stats = [
+  { label: "Connected exchanges", value: "5", detail: "Binance · Kraken · Coinbase · Bybit · Alpaca" },
+  { label: "Models online", value: "12", detail: "PPO, DQN, regime detectors" },
+  { label: "Latency budget", value: "41ms", detail: "Smart router p95 observed" },
+  { label: "Risk posture", value: "Green", detail: "All constraints within thresholds" }
+];
+
+const wallets = [
+  { name: "MetaMask", balance: "3.2 ETH", usd: "$8,420" },
+  { name: "WalletConnect", balance: "12 SOL", usd: "$1,740" },
+  { name: "Ledger", balance: "0.5 BTC", usd: "$32,115" },
+  { name: "Trezor", balance: "45 AVAX", usd: "$1,553" },
+  { name: "Phantom", balance: "150 DOT", usd: "$1,095" }
+];
+
+const predictions = [
+  { symbol: "BTC", signal: "BULLISH", confidence: 95, target: "$69,200" },
+  { symbol: "ETH", signal: "BULLISH", confidence: 89, target: "$3,750" },
+  { symbol: "SOL", signal: "BULLISH", confidence: 78, target: "$210" },
+  { symbol: "AVAX", signal: "BEARISH", confidence: 65, target: "$31" }
+];
+
+const onChain = [
+  { metric: "Exchange Inflow", value: "-8.2%", trend: "↓" },
+  { metric: "Exchange Outflow", value: "+11.4%", trend: "↑" },
+  { metric: "Whale Wallets", value: "1,342", trend: "↑" },
+  { metric: "Active Addresses", value: "2.8M", trend: "↑" },
+  { metric: "Hashrate", value: "612 EH/s", trend: "↑" },
+  { metric: "Funding Rate", value: "0.011%", trend: "↓" }
+];
+
+app.get("/api/widgets", (_req, res) => {
+  res.json({ app: "dashboard", widgets, stats, wallets, predictions, onChain });
+});
+
+app.get("/", (_req, res) => {
+  const walletRows = wallets
+    .map((wallet) => `<li><strong>${wallet.name}</strong><span>${wallet.balance} · ${wallet.usd}</span></li>`)
     .join("");
 
   const predictionRows = predictions
     .map(
-      (row) => `<li><strong>${row.symbol}</strong><span class="${row.signal === "BULLISH" ? "good" : "warn"}">${row.signal}</span><em>${row.confidence}%</em><b>${row.target}</b></li>`
+      (row) => `<li><strong>${row.symbol}</strong><span class="${row.signal.toLowerCase()}">${row.signal}</span><em>${row.confidence}%</em><small>${row.target}</small></li>`
     )
     .join("");
 
