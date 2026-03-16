@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: risk-engine
+  namespace: omega-prime
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: risk-engine
+  template:
+    metadata:
+      labels:
+        app: risk-engine
+    spec:
+      containers:
+        - name: risk-engine
+          image: omega-prime/risk-engine:latest
+          ports:
+            - containerPort: 8000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: risk-engine
+  namespace: omega-prime
+spec:
+  selector:
+    app: risk-engine
+  ports:
+    - port: 8000
+      targetPort: 8000
