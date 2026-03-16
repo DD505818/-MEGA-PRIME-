@@ -3,6 +3,85 @@ const express = require("express");
 const app = express();
 const port = 3000;
 
+const terminalSnapshot = {
+  status: "LIVE",
+  ticker: "BTCUSDT",
+  price: "$42,310",
+  dayPnl: "+$820",
+  latency: "41ms"
+};
+
+const charts = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "NASDAQ"];
+
+const topPanels = [
+  { name: "Market Watch", value: "24 pairs", trend: "+2.4% breadth" },
+  { name: "Orderbook", value: "$18.2M", trend: "Bid wall active" },
+  { name: "Liquidity Heatmap", value: "Dense", trend: "3 hotspot clusters" },
+  { name: "Portfolio & Risk", value: "2.1 Sharpe", trend: "VaR within limits" },
+  { name: "Wallets & Fund Mgmt", value: "$2.4M AUM", trend: "5 connected wallets" },
+  { name: "Execution Router", value: "12ms p95", trend: "Smart venue balancing" }
+];
+
+const walletBalances = [
+  { wallet: "MetaMask", amount: "3.2 ETH", usd: "$8,420" },
+  { wallet: "WalletConnect", amount: "12 SOL", usd: "$1,740" },
+  { wallet: "Ledger", amount: "0.5 BTC", usd: "$32,115" },
+  { wallet: "Trezor", amount: "45 AVAX", usd: "$1,553" },
+  { wallet: "Phantom", amount: "150 DOT", usd: "$1,095" }
+];
+
+const allocations = [
+  { bucket: "Spot", percent: 45 },
+  { bucket: "Futures", percent: 30 },
+  { bucket: "Staking", percent: 15 },
+  { bucket: "Yield", percent: 10 }
+];
+
+const predictions = [
+  { symbol: "BTC", signal: "BULLISH", confidence: 95, target: "$44,200" },
+  { symbol: "ETH", signal: "BULLISH", confidence: 88, target: "$2,460" },
+  { symbol: "SOL", signal: "BULLISH", confidence: 72, target: "$172" },
+  { symbol: "AVAX", signal: "BEARISH", confidence: 65, target: "$31" }
+];
+
+const sentiment = { bear: 22, neutral: 31, bull: 47, score: 74 };
+
+const onChain = [
+  { metric: "Exchange inflow", value: "-12.4%", trend: "↓" },
+  { metric: "Whale wallets", value: "+18", trend: "↑" },
+  { metric: "Active addresses", value: "1.34M", trend: "↑" },
+  { metric: "Network hashrate", value: "612 EH/s", trend: "↑" },
+  { metric: "Funding rates", value: "0.011%", trend: "↓" }
+];
+
+app.get("/api/widgets", (_req, res) => {
+  res.json({
+    app: "dashboard",
+    terminalSnapshot,
+    charts,
+    topPanels,
+    walletBalances,
+    allocations,
+    predictions,
+    sentiment,
+    onChain
+  });
+});
+
+app.get("/", (_req, res) => {
+  const chartTiles = charts.map((symbol) => `<article class="chart-card"><h3>${symbol}</h3><div class="live-line"></div></article>`).join("");
+  const topPanelTiles = topPanels
+    .map((panel) => `<article class="panel"><p class="kicker">${panel.name}</p><h4>${panel.value}</h4><p>${panel.trend}</p></article>`)
+    .join("");
+
+  const walletRows = walletBalances
+    .map((item) => `<li><strong>${item.wallet}</strong><span>${item.amount}</span><em>${item.usd}</em></li>`)
+    .join("");
+
+  const allocationRows = allocations
+    .map(
+      (item) => `<li><label>${item.bucket} <span>${item.percent}%</span></label><div class="bar"><i style="width:${item.percent}%"></i></div></li>`
+    )
 const widgets = [
   "Multi-chart trading terminal",
   "Portfolio metrics",
@@ -75,258 +154,110 @@ app.get("/", (_req, res) => {
     <title>ΩMEGA PRIME ∆ 2026 Terminal</title>
     <style>
       :root {
-        --bg: #03060f;
-        --panel: #0d1427;
-        --panel2: #0a1120;
-        --line: rgba(135, 156, 211, 0.24);
-        --text: #e9efff;
-        --muted: #95a5d2;
-        --good: #3ee795;
-        --danger: #ff4f6b;
-        --warn: #ffb340;
-        --chip: #152242;
+        --bg:#050a14;
+        --panel:#0f1828;
+        --panel2:#121e33;
+        --line:#263753;
+        --text:#e8f2ff;
+        --muted:#9fb0cc;
+        --green:#4df2b2;
+        --red:#ff617d;
+        --blue:#6dbbff;
       }
-      * { box-sizing: border-box; }
-      body {
-        margin: 0;
-        font-family: Inter, system-ui, sans-serif;
-        color: var(--text);
-        background: radial-gradient(circle at 0% 0%, rgba(124, 92, 255, 0.2), transparent 34%), var(--bg);
-      }
-      .wrap { max-width: 1440px; margin: 0 auto; padding: 1rem; }
-      .topbar {
-        display: grid;
-        grid-template-columns: 1.5fr auto auto auto auto auto;
-        gap: .6rem;
-        align-items: center;
-        background: linear-gradient(130deg, #121d35, #0b1223);
-        border: 1px solid var(--line);
-        border-radius: 16px;
-        padding: .85rem 1rem;
-      }
-      .brand { font-weight: 700; }
-      .pill { font-size: .85rem; color: var(--muted); }
-      .btn {
-        border: 1px solid var(--line);
-        background: #101a31;
-        color: var(--text);
-        border-radius: 10px;
-        padding: .55rem .75rem;
-        cursor: pointer;
-        position: relative;
-        overflow: hidden;
-      }
-      .btn:hover { transform: translateY(-1px); }
-      .btn.start.active { box-shadow: 0 0 20px rgba(62, 231, 149, 0.6); animation: pulse-green 1.2s infinite; }
-      .btn.stop.active { box-shadow: 0 0 20px rgba(255,79,107,.6); animation: pulse-red 1.2s infinite; }
-      .btn.emergency { border-color: rgba(255,79,107,.5); }
-      .btn.emergency.active { animation: flash 0.5s infinite; }
-      .btn.emergency:hover { background: #ff274f; }
-      @keyframes pulse-green { 0%,100%{opacity:1}50%{opacity:.72} }
-      @keyframes pulse-red { 0%,100%{opacity:1}50%{opacity:.72} }
-      @keyframes flash { 0%,100%{background:#6f1426}50%{background:#ff335a} }
-      .charts {
-        margin-top: .9rem;
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: .75rem;
-      }
-      .chart {
-        background: linear-gradient(150deg, var(--panel), var(--panel2));
-        border: 1px solid var(--line);
-        border-radius: 14px;
-        min-height: 160px;
-        padding: .8rem;
-        position: relative;
-      }
-      .chart .indicator {
-        position: absolute; top: 0; left: 0; right: 0; height: 4px;
-        background: transparent;
-      }
-      .chart.trading .indicator { background: linear-gradient(90deg, #3ee795, #7bffbf); animation: pulse-green 1s infinite; }
-      .panel-grid {
-        margin-top: .9rem;
-        display: grid;
-        grid-template-columns: repeat(5, 1fr);
-        gap: .7rem;
-      }
-      .panel {
-        background: linear-gradient(155deg, var(--panel), #070d19);
-        border: 1px solid var(--line);
-        border-radius: 14px;
-        padding: .65rem;
-        min-height: 180px;
-      }
-      .panel h3 { margin: 0 0 .5rem; font-size: .9rem; }
-      .muted { color: var(--muted); font-size: .8rem; }
-      .wallets ul, .pred ul, .chain ul { list-style: none; margin: 0; padding: 0; display: grid; gap: .35rem; }
-      .wallets li, .pred li, .chain li {
-        display: grid;
-        grid-template-columns: 1fr auto;
-        gap: .5rem;
-        border: 1px solid rgba(148,165,205,.2);
-        border-radius: 10px;
-        padding: .35rem .45rem;
-        font-size: .78rem;
-      }
-      .pred li { grid-template-columns: 35px 1fr auto auto; align-items: center; }
-      .bullish { color: var(--good); }
-      .bearish { color: var(--danger); }
-      .alloc { margin-top: .45rem; display: grid; gap: .25rem; }
-      .bar { background: #0f1c36; border-radius: 6px; overflow: hidden; height: 8px; }
-      .bar > span { display: block; height: 100%; background: linear-gradient(90deg, #58a6ff, #7c5cff); }
-      .controls input { width: 100%; }
-      .controls label { font-size: .75rem; color: var(--muted); display: block; margin-top: .4rem; }
-      .quick { display: flex; flex-wrap: wrap; gap: .35rem; }
-      .quick button { padding: .35rem .45rem; font-size: .72rem; }
-      .sentiment .meter {
-        margin-top: .6rem;
-        height: 10px;
-        background: #111c33;
-        border-radius: 8px;
-        overflow: hidden;
-        display: grid;
-        grid-template-columns: 25% 30% 45%;
-      }
-      .sentiment .meter span:nth-child(1) { background: #ff4f6b; }
-      .sentiment .meter span:nth-child(2) { background: #ffb340; }
-      .sentiment .meter span:nth-child(3) { background: #3ee795; }
-      .notif {
-        position: fixed; right: 1rem; bottom: 1rem; display: grid; gap: .45rem; z-index: 20;
-      }
-      .toast {
-        background: #0d1932; border: 1px solid var(--line); padding: .55rem .75rem; border-radius: 10px;
-        transform: translateX(120%); animation: slide-in .25s forwards;
-      }
-      @keyframes slide-in { to { transform: translateX(0); } }
-      .ripple {
-        position: absolute; border-radius: 50%; transform: scale(0); background: rgba(255,255,255,.35);
-        animation: ripple .6s linear;
-      }
-      @keyframes ripple { to { transform: scale(4); opacity: 0; } }
-      @media (max-width: 1100px) {
-        .panel-grid { grid-template-columns: repeat(2, 1fr); }
-        .topbar { grid-template-columns: 1fr 1fr 1fr; }
-      }
+      *{box-sizing:border-box}
+      body{margin:0;font-family:Inter,system-ui,sans-serif;background:radial-gradient(circle at 20% 5%, #17233b, transparent 40%),var(--bg);color:var(--text);padding:1rem}
+      .terminal{max-width:1400px;margin:0 auto;display:grid;gap:0.85rem}
+      .header{display:flex;justify-content:space-between;align-items:center;gap:.8rem;padding:.9rem 1rem;border:1px solid var(--line);border-radius:14px;background:linear-gradient(160deg,var(--panel),#0a1323)}
+      .brand{font-weight:700;letter-spacing:.04em}
+      .live{color:var(--green);font-weight:700;margin-left:.5rem}
+      .metrics{display:flex;gap:.75rem;flex-wrap:wrap;color:var(--muted)}
+      .controls{display:flex;gap:.45rem;flex-wrap:wrap}
+      .btn{position:relative;border:1px solid #355075;background:#10213b;color:#d9e8ff;padding:.45rem .8rem;border-radius:999px;cursor:pointer;overflow:hidden;transition:.2s ease}
+      .btn:hover{transform:translateY(-1px)}
+      .btn.start.active{box-shadow:0 0 20px rgba(77,242,178,.55);border-color:rgba(77,242,178,.7)}
+      .btn.stop.active{box-shadow:0 0 20px rgba(255,97,125,.5);border-color:rgba(255,97,125,.7)}
+      .btn.emergency{animation:flash 1.2s infinite alternate;border-color:#ff617d}
+      .btn.emergency:hover{background:#ff234f;color:#fff}
+      .btn::after{content:"";position:absolute;inset:0;background:radial-gradient(circle,#fff6,transparent 55%);opacity:0;transition:opacity .3s}
+      .btn:active::after{opacity:1}
+      .chart-grid{display:grid;grid-template-columns:repeat(2,minmax(220px,1fr));gap:.75rem}
+      .chart-card{min-height:120px;border:1px solid var(--line);border-radius:12px;background:linear-gradient(165deg,var(--panel2),#0b1527);padding:.75rem;display:flex;flex-direction:column;justify-content:space-between}
+      .chart-card h3{margin:0;font-size:.95rem;color:#d9e9ff}
+      .live-line{height:6px;border-radius:999px;background:linear-gradient(90deg,transparent,#34f39f,transparent);animation:pulse 1.6s infinite}
+      .grid-six{display:grid;grid-template-columns:repeat(6,minmax(180px,1fr));gap:.65rem}
+      .panel{border:1px solid var(--line);border-radius:12px;background:#0d1728;padding:.65rem}
+      .kicker{margin:0;font-size:.7rem;text-transform:uppercase;color:var(--muted)}
+      .panel h4{margin:.35rem 0 .2rem 0}
+      .panel p{margin:0;color:var(--muted);font-size:.85rem}
+      .bottom{display:grid;grid-template-columns:2fr 1fr 1fr;gap:.7rem}
+      .section{border:1px solid var(--line);border-radius:12px;background:#0d1728;padding:.75rem}
+      .section h4{margin:0 0 .6rem 0}
+      ul{margin:0;padding:0;list-style:none;display:grid;gap:.45rem}
+      .wallet li,.chain li,.pred li{display:grid;align-items:center;gap:.5rem;font-size:.84rem;border:1px solid #21314b;border-radius:10px;padding:.45rem .55rem;background:#0a1220}
+      .wallet li{grid-template-columns:1.2fr 1fr .8fr}
+      .pred li{grid-template-columns:.5fr 1fr .7fr .8fr}
+      .chain li{grid-template-columns:1.2fr .8fr .2fr}
+      .good{color:var(--green)} .warn{color:#ffc27a}
+      .alloc label{display:flex;justify-content:space-between;color:var(--muted);font-size:.8rem}
+      .bar{height:8px;border-radius:999px;background:#1a2740;margin-top:.3rem;overflow:hidden}
+      .bar i{display:block;height:100%;background:linear-gradient(90deg,#5f9dff,#4df2b2)}
+      .quick{display:flex;gap:.45rem;flex-wrap:wrap;margin-bottom:.6rem}
+      .note{position:fixed;right:1rem;bottom:1rem;background:#102742;border:1px solid #2f4f76;padding:.7rem .85rem;border-radius:10px;animation:slideIn .4s ease}
+      .sentiment{margin-top:.7rem}
+      .sentiment .row{display:flex;height:10px;border-radius:999px;overflow:hidden}
+      .bear{background:#ff617d;width:${sentiment.bear}%}.neutral{background:#7687a5;width:${sentiment.neutral}%}.bull{background:#4df2b2;width:${sentiment.bull}%}
+      .actions{display:flex;gap:.5rem;margin-top:.6rem}
+      .actions button{border:1px solid #355075;background:#0f223d;color:#cfe2ff;padding:.38rem .65rem;border-radius:8px}
+      input[type='range']{width:100%}
+      @keyframes pulse{0%{opacity:.35}50%{opacity:1}100%{opacity:.35}}
+      @keyframes flash{0%{box-shadow:0 0 0 rgba(255,97,125,.15)}100%{box-shadow:0 0 18px rgba(255,97,125,.7)}}
+      @keyframes slideIn{from{transform:translateY(14px);opacity:0}to{transform:translateY(0);opacity:1}}
+      @media (max-width:1200px){.grid-six{grid-template-columns:repeat(3,minmax(180px,1fr))}.bottom{grid-template-columns:1fr}.header{flex-direction:column;align-items:flex-start}}
     </style>
   </head>
   <body>
-    <div class="wrap">
-      <header class="topbar">
-        <div class="brand">ΩMEGA PRIME ∆ | LIVE | $42,310 | +$820</div>
-        <div class="pill">Latency: 41ms</div>
-        <button class="btn start" data-action="Start Trading">Start</button>
-        <button class="btn stop" data-action="Stop Trading">Stop</button>
-        <button class="btn" data-action="Pause Trading">Pause</button>
-        <button class="btn emergency" data-action="Emergency Stop">EMRG</button>
+    <main class="terminal">
+      <header class="header">
+        <div>
+          <span class="brand">ΩMEGA PRIME ∆ 2026</span>
+          <span class="live">${terminalSnapshot.status}</span>
+          <div class="metrics">${terminalSnapshot.price} · ${terminalSnapshot.dayPnl} · ${terminalSnapshot.latency}</div>
+        </div>
+        <div class="controls">
+          <button class="btn start active">Start</button>
+          <button class="btn stop">Stop</button>
+          <button class="btn">Pause</button>
+          <button class="btn emergency">Emergency Stop</button>
+        </div>
       </header>
-
-      <section class="charts" id="charts">
-        <article class="chart"><div class="indicator"></div><h3>BTCUSDT</h3><p class="muted">Live orderflow + microstructure</p></article>
-        <article class="chart"><div class="indicator"></div><h3>ETHUSDT</h3><p class="muted">Adaptive momentum channel</p></article>
-        <article class="chart"><div class="indicator"></div><h3>SOLUSDT</h3><p class="muted">Volatility expansion tracking</p></article>
-        <article class="chart"><div class="indicator"></div><h3>NASDAQ</h3><p class="muted">Cross-asset correlation monitor</p></article>
-      </section>
-
-      <section class="panel-grid">
-        <article class="panel"><h3>Market Watch</h3><p class="muted">BTC +2.1% · ETH +1.3% · DXY -0.2%</p></article>
-        <article class="panel"><h3>Orderbook</h3><p class="muted">Bid/Ask imbalance: +8.7%</p></article>
-        <article class="panel"><h3>Liquidity Heatmap</h3><p class="muted">High density near BTC 66k</p></article>
-        <article class="panel"><h3>Portfolio & Risk</h3><p class="muted">VaR: 1.9% · DD: 3.1% · Exposure: 22%</p></article>
-        <article class="panel wallets">
-          <h3>Wallets & Fund Mgmt</h3>
-          <p><strong>Total AUM:</strong> $2.4M</p>
+      <section class="chart-grid">${chartTiles}</section>
+      <section class="grid-six">${topPanelTiles}</section>
+      <section class="bottom">
+        <article class="section wallet">
+          <h4>Wallets & Fund Management</h4>
           <ul>${walletRows}</ul>
-          <div class="alloc">
-            <small>Spot 45%</small><div class="bar"><span style="width:45%"></span></div>
-            <small>Futures 30%</small><div class="bar"><span style="width:30%"></span></div>
-            <small>Staking 15%</small><div class="bar"><span style="width:15%"></span></div>
-            <small>Yield 10%</small><div class="bar"><span style="width:10%"></span></div>
-          </div>
-          <div class="quick" style="margin-top:.45rem;"><button class="btn" data-action="Deposit">Deposit</button><button class="btn" data-action="Withdraw">Withdraw</button><button class="btn" data-action="Rebalance">Rebalance</button></div>
+          <ul class="alloc">${allocationRows}</ul>
+          <div class="actions"><button>Deposit</button><button>Withdraw</button><button>Rebalance</button></div>
         </article>
-
-        <article class="panel pred">
-          <h3>AI Predictions</h3>
+        <article class="section pred">
+          <h4>AI Predictions</h4>
           <ul>${predictionRows}</ul>
-        </article>
-        <article class="panel sentiment">
-          <h3>Social Sentiment</h3>
-          <p class="muted">Community mood: <strong>72/100</strong></p>
-          <div class="meter"><span></span><span></span><span></span></div>
-          <p class="muted">Bear 25% · Neutral 30% · Bull 45%</p>
-        </article>
-        <article class="panel chain">
-          <h3>On-chain Analytics</h3>
-          <ul>${onChainRows}</ul>
-        </article>
-        <article class="panel"><h3>Execution Router</h3><p class="muted">Best venue: Binance · Failover ready</p></article>
-        <article class="panel controls">
-          <h3>Portfolio Controls</h3>
-          <div class="quick">
-            <button class="btn" data-action="Start All">Start All</button>
-            <button class="btn" data-action="Stop All">Stop All</button>
-            <button class="btn" data-action="Close All">Close All</button>
-            <button class="btn" data-action="Hedge">Hedge</button>
+          <div class="sentiment">
+            <small>Social sentiment score: ${sentiment.score}/100</small>
+            <div class="row"><span class="bear"></span><span class="neutral"></span><span class="bull"></span></div>
           </div>
-          <label for="risk">Risk Level: <strong id="riskValue">45%</strong></label>
-          <input id="risk" type="range" min="0" max="100" value="45" />
-          <label for="lev">Leverage: <strong id="levValue">8x</strong></label>
-          <input id="lev" type="range" min="1" max="20" value="8" />
-          <button class="btn" style="margin-top:.5rem;width:100%;" data-action="Initialize System">Initialize System</button>
+        </article>
+        <article class="section chain">
+          <h4>On-Chain Analytics</h4>
+          <ul>${onChainRows}</ul>
+          <h4 style="margin-top:.8rem">Portfolio Controls</h4>
+          <div class="quick"><button class="btn">Start All</button><button class="btn">Stop All</button><button class="btn">Close All</button><button class="btn">Hedge</button></div>
+          <small>Risk Level</small><input type="range" min="0" max="100" value="62" />
+          <small>Leverage</small><input type="range" min="1" max="20" value="8" />
         </article>
       </section>
-    </div>
-
-    <aside class="notif" id="notif"></aside>
-
-    <script>
-      const charts = [...document.querySelectorAll('.chart')];
-      const notif = document.getElementById('notif');
-      const risk = document.getElementById('risk');
-      const lev = document.getElementById('lev');
-      const riskValue = document.getElementById('riskValue');
-      const levValue = document.getElementById('levValue');
-
-      function toast(msg, isError = false) {
-        const div = document.createElement('div');
-        div.className = 'toast';
-        div.style.borderColor = isError ? 'rgba(255,79,107,.5)' : 'rgba(62,231,149,.45)';
-        div.textContent = (isError ? '⚠ ' : '✅ ') + msg;
-        notif.appendChild(div);
-        setTimeout(() => div.remove(), 3000);
-      }
-
-      function ripple(event) {
-        const button = event.currentTarget;
-        const circle = document.createElement('span');
-        const size = Math.max(button.clientWidth, button.clientHeight);
-        const rect = button.getBoundingClientRect();
-        circle.style.width = circle.style.height = size + 'px';
-        circle.style.left = (event.clientX - rect.left - size / 2) + 'px';
-        circle.style.top = (event.clientY - rect.top - size / 2) + 'px';
-        circle.className = 'ripple';
-        button.appendChild(circle);
-        setTimeout(() => circle.remove(), 650);
-      }
-
-      document.querySelectorAll('.btn').forEach((btn) => {
-        btn.addEventListener('click', (e) => {
-          ripple(e);
-          const action = btn.dataset.action || btn.textContent.trim();
-          if (btn.classList.contains('start')) {
-            btn.classList.toggle('active');
-            charts.forEach((chart) => chart.classList.toggle('trading', btn.classList.contains('active')));
-          }
-          if (btn.classList.contains('stop')) btn.classList.toggle('active');
-          if (btn.classList.contains('emergency')) btn.classList.toggle('active');
-          toast(action + ' triggered', btn.classList.contains('emergency'));
-        });
-      });
-
-      risk.addEventListener('input', () => { riskValue.textContent = risk.value + '%'; });
-      lev.addEventListener('input', () => { levValue.textContent = lev.value + 'x'; });
-    </script>
+    </main>
+    <div class="note">✅ Trading notification: System initialized.</div>
   </body>
 </html>`);
 });
