@@ -1,0 +1,14 @@
+global:
+  scrape_interval: 15s
+scrape_configs:
+  - job_name: omega-prime-services
+    static_configs:
+      - targets:
+          - market-data-service:8000
+          - feature-engine:8000
+          - strategy-engine:8000
+          - rl-agent-cluster:8000
+          - execution-router:8000
+          - risk-engine:8000
+          - portfolio-service:8000
+          - backtesting-cluster:8000

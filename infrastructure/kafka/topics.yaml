@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-topics
+data:
+  topics: |
+    - market.ticks
+    - market.orderbooks
+    - features.volatility
+    - features.orderflow
+    - signals.strategy
+    - orders.execution
+    - portfolio.decisions
+    - risk.alerts
