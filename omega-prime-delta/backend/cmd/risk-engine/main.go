@@ -16,14 +16,7 @@ import (
 )
 
 var (
-	db    *sql.DB
-	mu    sync.RWMutex
-	state struct {
-		equity     float64
-		dailyLoss  float64
-		peakEquity float64
-		drawdown   float64
-	}
+	db *sql.DB
 
 	leadershipMu sync.RWMutex
 	isLeader     bool
@@ -32,6 +25,13 @@ var (
 )
 
 const lockID = 12345
+
+type riskState struct {
+	equity     float64
+	dailyLoss  float64
+	peakEquity float64
+	drawdown   float64
+}
 
 func setLeadership(v bool) {
 	leadershipMu.Lock()
@@ -67,7 +67,7 @@ func tryBecomeLeader() bool {
 		conn.Close()
 		return false
 	}
-	_, err = db.Exec(`INSERT INTO leader_election (id, leader_id, last_heartbeat)
+	_, err = conn.ExecContext(ctx, `INSERT INTO leader_election (id, leader_id, last_heartbeat)
                       VALUES (1, $1, NOW())
                       ON CONFLICT (id) DO UPDATE
                       SET leader_id = EXCLUDED.leader_id, last_heartbeat = NOW()`, leaderID)
@@ -138,19 +138,13 @@ func leaderElectionLoop() {
 	}
 }
 
-func loadState() error {
-	row := db.QueryRow("SELECT equity, daily_loss, peak_equity, drawdown FROM account_state WHERE id = 1")
-	var equity, dailyLoss, peakEquity, drawdown float64
-	if err := row.Scan(&equity, &dailyLoss, &peakEquity, &drawdown); err != nil {
-		return err
+func loadState(ctx context.Context) (riskState, error) {
+	row := db.QueryRowContext(ctx, "SELECT equity, daily_loss, peak_equity, drawdown FROM account_state WHERE id = 1")
+	var s riskState
+	if err := row.Scan(&s.equity, &s.dailyLoss, &s.peakEquity, &s.drawdown); err != nil {
+		return riskState{}, err
 	}
-	mu.Lock()
-	state.equity = equity
-	state.dailyLoss = dailyLoss
-	state.peakEquity = peakEquity
-	state.drawdown = drawdown
-	mu.Unlock()
-	return nil
+	return s, nil
 }
 
 func validateHandler(w http.ResponseWriter, r *http.Request) {
@@ -158,7 +152,10 @@ func validateHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Not leader", http.StatusServiceUnavailable)
 		return
 	}
-	if err := loadState(); err != nil {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+	state, err := loadState(ctx)
+	if err != nil {
 		log.Printf("Failed to load state for validation: %v", err)
 		http.Error(w, "Risk state unavailable", http.StatusServiceUnavailable)
 		return
@@ -178,17 +175,11 @@ func validateHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
-	mu.RLock()
-	equity := state.equity
-	dailyLoss := state.dailyLoss
-	drawdown := state.drawdown
-	mu.RUnlock()
-
-	if dailyLoss < -0.02*equity {
+	if state.dailyLoss < -0.02*state.equity {
 		http.Error(w, "Daily loss limit exceeded", http.StatusBadRequest)
 		return
 	}
-	if drawdown > 0.10 {
+	if state.drawdown > 0.10 {
 		http.Error(w, "Drawdown limit exceeded", http.StatusBadRequest)
 		return
 	}
@@ -214,9 +205,6 @@ func main() {
 	leaderID = os.Getenv("HOSTNAME")
 	if leaderID == "" {
 		leaderID = "risk-engine-" + time.Now().Format("20060102150405")
-	}
-	if err := loadState(); err != nil {
-		log.Printf("Initial state load failed: %v", err)
 	}
 	go leaderElectionLoop()
 
