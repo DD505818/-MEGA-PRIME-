@@ -1,1 +1,7 @@
 # Top-level ML dependencies placeholder.
+# Shared ML requirements placeholder for ΩMEGA Prime Δ modules.
+numpy==1.24.3
+pandas==2.1.4
+torch==2.2.0
+fastapi==0.115.0
+uvicorn==0.30.6

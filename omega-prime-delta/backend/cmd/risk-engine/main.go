@@ -16,9 +16,8 @@ import (
 )
 
 var (
-	db *sql.DB
-	mu sync.RWMutex
-
+	db    *sql.DB
+	mu    sync.RWMutex
 	state struct {
 		equity     float64
 		dailyLoss  float64
@@ -63,56 +62,48 @@ func tryBecomeLeader() bool {
 		return false
 	}
 	_, err = db.Exec(`INSERT INTO leader_election (id, leader_id, last_heartbeat)
-		VALUES (1, $1, NOW())
-		ON CONFLICT (id) DO UPDATE
-		SET leader_id = EXCLUDED.leader_id, last_heartbeat = NOW()`, leaderID)
+                      VALUES (1, $1, NOW())
+                      ON CONFLICT (id) DO UPDATE
+                      SET leader_id = EXCLUDED.leader_id, last_heartbeat = NOW()`, leaderID)
 	if err != nil {
-		_ = db.QueryRowContext(ctx, "SELECT pg_advisory_unlock($1)", lockID).Scan(new(bool))
 		return false
 	}
 	return true
 }
 
 func releaseLeadership() {
-	_, _ = db.Exec("SELECT pg_advisory_unlock($1)", lockID)
+	db.Exec("SELECT pg_advisory_unlock($1)", lockID)
 }
 
 func refreshHeartbeat() {
-	for leader() {
+	for isLeader {
 		time.Sleep(5 * time.Second)
 		_, err := db.Exec("UPDATE leader_election SET last_heartbeat = NOW() WHERE id = 1 AND leader_id = $1", leaderID)
 		if err != nil {
 			log.Printf("Heartbeat failed: %v", err)
-			setLeadership(false)
+			isLeader = false
 			releaseLeadership()
 			return
 		}
 	}
 }
 
-func leaderElectionLoop(ctx context.Context) {
+func leaderElectionLoop() {
 	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			if leader() {
-				continue
-			}
-			var heartbeat time.Time
-			var currentLeader string
-			err := db.QueryRow("SELECT leader_id, last_heartbeat FROM leader_election WHERE id = 1").Scan(&currentLeader, &heartbeat)
-			if err == nil && time.Since(heartbeat) < 15*time.Second {
-				continue
-			}
-			if tryBecomeLeader() {
-				setLeadership(true)
-				log.Println("Became risk engine leader")
-				go refreshHeartbeat()
-			}
+	for range ticker.C {
+		if isLeader {
+			continue
+		}
+		var heartbeat time.Time
+		var leader string
+		err := db.QueryRow("SELECT leader_id, last_heartbeat FROM leader_election WHERE id = 1").Scan(&leader, &heartbeat)
+		if err == nil && time.Since(heartbeat) < 15*time.Second {
+			continue
+		}
+		if tryBecomeLeader() {
+			isLeader = true
+			log.Println("Became risk engine leader")
+			go refreshHeartbeat()
 		}
 	}
 }
@@ -133,7 +124,7 @@ func loadState() {
 }
 
 func validateHandler(w http.ResponseWriter, r *http.Request) {
-	if !leader() {
+	if !isLeader {
 		http.Error(w, "Not leader", http.StatusServiceUnavailable)
 		return
 	}
@@ -171,12 +162,12 @@ func validateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(map[string]bool{"validated": true})
+	json.NewEncoder(w).Encode(map[string]bool{"validated": true})
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("OK"))
+	w.Write([]byte("OK"))
 }
 
 func main() {
@@ -189,10 +180,8 @@ func main() {
 	if leaderID == "" {
 		leaderID = "risk-engine-" + time.Now().Format("20060102150405")
 	}
-
 	loadState()
-	electionCtx, cancelElection := context.WithCancel(context.Background())
-	go leaderElectionLoop(electionCtx)
+	go leaderElectionLoop()
 
 	http.HandleFunc("/health", healthHandler)
 	http.HandleFunc("/validate", validateHandler)
@@ -209,12 +198,10 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	log.Println("Shutting down...")
-	cancelElection()
-
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_ = srv.Shutdown(ctx)
-	if leader() {
+	srv.Shutdown(ctx)
+	if isLeader {
 		releaseLeadership()
 	}
 }

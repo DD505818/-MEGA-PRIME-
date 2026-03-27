@@ -13,8 +13,6 @@ class Agent001(Strategy):
         return -np.sum(hist * np.log(hist))
 
     def on_tick(self, tick, context):
-        # Use 1-min bars if available; here we simulate with dummy returns
-        # For brevity, returns to a dummy signal
         return {
             'agent': self.name,
             'direction': 'BUY',
@@ -22,5 +20,5 @@ class Agent001(Strategy):
             'size': 1.0,
             'entry_price': tick['price'],
             'stop_loss': tick['price'] * 0.99,
-            'take_profit': tick['price'] * 1.02
+            'take_profit': tick['price'] * 1.02,
         }
