@@ -1,13 +1,15 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 
 	"github.com/IBM/sarama"
-	_ "github.com/lib/pq"
 )
 
 var (
@@ -19,6 +21,27 @@ var (
 		"Agent013": 0.1, "Agent014": 0.1, "Agent015": 0.1,
 	}
 )
+
+func applyWeightUpdate(update map[string]float64) {
+	mu.Lock()
+	defer mu.Unlock()
+
+	for agent, w := range update {
+		if _, ok := strategyWeights[agent]; ok {
+			strategyWeights[agent] = w
+		}
+	}
+
+	total := 0.0
+	for _, w := range strategyWeights {
+		total += w
+	}
+	if total > 0 {
+		for agent := range strategyWeights {
+			strategyWeights[agent] /= total
+		}
+	}
+}
 
 func main() {
 	brokers := []string{os.Getenv("KAFKA_BROKERS")}
@@ -32,34 +55,35 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer partitionConsumer.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	go func() {
-		for msg := range partitionConsumer.Messages() {
-			var update map[string]float64
-			if err := json.Unmarshal(msg.Value, &update); err != nil {
-				log.Printf("Invalid weight update: %v", err)
-				continue
-			}
-			mu.Lock()
-			for agent, w := range update {
-				if _, ok := strategyWeights[agent]; ok {
-					strategyWeights[agent] = w
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case msg := <-partitionConsumer.Messages():
+				if msg == nil {
+					continue
 				}
-			}
-
-			total := 0.0
-			for _, w := range strategyWeights {
-				total += w
-			}
-			if total > 0 {
-				for agent := range strategyWeights {
-					strategyWeights[agent] /= total
+				var update map[string]float64
+				if err := json.Unmarshal(msg.Value, &update); err != nil {
+					log.Printf("Invalid weight update: %v", err)
+					continue
 				}
+				applyWeightUpdate(update)
+				mu.RLock()
+				log.Printf("Updated weights: %v", strategyWeights)
+				mu.RUnlock()
 			}
-			mu.Unlock()
-			log.Printf("Updated weights: %v", strategyWeights)
 		}
 	}()
 
-	select {}
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	cancel()
 }

@@ -24,11 +24,25 @@ var (
 		peakEquity float64
 		drawdown   float64
 	}
-	isLeader bool
-	leaderID string
+
+	leadershipMu sync.RWMutex
+	isLeader     bool
+	leaderID     string
 )
 
 const lockID = 12345
+
+func setLeadership(v bool) {
+	leadershipMu.Lock()
+	isLeader = v
+	leadershipMu.Unlock()
+}
+
+func leader() bool {
+	leadershipMu.RLock()
+	defer leadershipMu.RUnlock()
+	return isLeader
+}
 
 func initDB() error {
 	var err error
