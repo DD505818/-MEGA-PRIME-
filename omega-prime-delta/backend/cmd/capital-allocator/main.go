@@ -1,13 +1,15 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 
 	"github.com/IBM/sarama"
-	_ "github.com/lib/pq"
 )
 
 var (
@@ -20,50 +22,68 @@ var (
 	}
 )
 
-func main() {
-	// Initialize DB (same as risk engine)
-	// ... (omitted for brevity)
+func applyWeightUpdate(update map[string]float64) {
+	mu.Lock()
+	defer mu.Unlock()
 
-	// Start weight consumer from meta-controller
+	for agent, w := range update {
+		if _, ok := strategyWeights[agent]; ok {
+			strategyWeights[agent] = w
+		}
+	}
+
+	total := 0.0
+	for _, w := range strategyWeights {
+		total += w
+	}
+	if total > 0 {
+		for agent := range strategyWeights {
+			strategyWeights[agent] /= total
+		}
+	}
+}
+
+func main() {
 	brokers := []string{os.Getenv("KAFKA_BROKERS")}
 	consumer, err := sarama.NewConsumer(brokers, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer consumer.Close()
+
 	partitionConsumer, err := consumer.ConsumePartition("meta_controller.weights", 0, sarama.OffsetNewest)
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer partitionConsumer.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	go func() {
-		for msg := range partitionConsumer.Messages() {
-			var update map[string]float64
-			if err := json.Unmarshal(msg.Value, &update); err != nil {
-				log.Printf("Invalid weight update: %v", err)
-				continue
-			}
-			mu.Lock()
-			for agent, w := range update {
-				if _, ok := strategyWeights[agent]; ok {
-					strategyWeights[agent] = w
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case msg := <-partitionConsumer.Messages():
+				if msg == nil {
+					continue
 				}
-			}
-			// Normalize
-			total := 0.0
-			for _, w := range strategyWeights {
-				total += w
-			}
-			if total > 0 {
-				for agent := range strategyWeights {
-					strategyWeights[agent] /= total
+				var update map[string]float64
+				if err := json.Unmarshal(msg.Value, &update); err != nil {
+					log.Printf("Invalid weight update: %v", err)
+					continue
 				}
+				applyWeightUpdate(update)
+				mu.RLock()
+				log.Printf("Updated weights: %v", strategyWeights)
+				mu.RUnlock()
 			}
-			mu.Unlock()
-			log.Printf("Updated weights: %v", strategyWeights)
 		}
 	}()
 
-	// Consume signals.generated, apply weights, produce orders.requested
-	// ... (similar to previous versions)
-	select {}
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	cancel()
 }
