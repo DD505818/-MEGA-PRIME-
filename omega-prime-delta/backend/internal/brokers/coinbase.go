@@ -1,3 +1,7 @@
 package brokers
 
-// TODO: implement coinbase service logic.
+import "log/slog"
+
+func NewCoinbase(config Config, logger *slog.Logger) Adapter {
+	return newSimulatedAdapter("coinbase", config, logger)
+}

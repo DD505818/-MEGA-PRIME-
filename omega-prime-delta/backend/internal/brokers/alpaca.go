@@ -1,3 +1,7 @@
 package brokers
 
-// TODO: implement alpaca service logic.
+import "log/slog"
+
+func NewAlpaca(config Config, logger *slog.Logger) Adapter {
+	return newSimulatedAdapter("alpaca", config, logger)
+}
