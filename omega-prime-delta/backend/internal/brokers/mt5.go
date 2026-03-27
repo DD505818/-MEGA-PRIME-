@@ -1,3 +1,7 @@
 package brokers
 
-// TODO: implement mt5 service logic.
+import "log/slog"
+
+func NewMT5(config Config, logger *slog.Logger) Adapter {
+	return newSimulatedAdapter("mt5", config, logger)
+}
