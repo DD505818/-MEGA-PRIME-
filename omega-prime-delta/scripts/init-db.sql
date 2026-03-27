@@ -1,1 +1,1 @@
--- TODO: add schema or migration SQL
+\i ../backend/db/schema.sql
