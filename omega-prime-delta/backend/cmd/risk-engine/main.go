@@ -147,6 +147,8 @@ func loadState(ctx context.Context) (riskState, error) {
 	return s, nil
 }
 
+var loadRiskState = loadState
+
 func validateHandler(w http.ResponseWriter, r *http.Request) {
 	if !leader() {
 		http.Error(w, "Not leader", http.StatusServiceUnavailable)
@@ -154,7 +156,7 @@ func validateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
-	state, err := loadState(ctx)
+	state, err := loadRiskState(ctx)
 	if err != nil {
 		log.Printf("Failed to load state for validation: %v", err)
 		http.Error(w, "Risk state unavailable", http.StatusServiceUnavailable)

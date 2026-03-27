@@ -9,6 +9,15 @@ type Producer struct {
 }
 
 func NewProducer(brokers []string) (*Producer, error) {
+	config := newProducerConfig()
+	syncProducer, err := sarama.NewSyncProducer(brokers, config)
+	if err != nil {
+		return nil, err
+	}
+	return &Producer{syncProducer: syncProducer}, nil
+}
+
+func newProducerConfig() *sarama.Config {
 	config := sarama.NewConfig()
 	config.Producer.RequiredAcks = sarama.WaitForAll
 	config.Producer.Retry.Max = 10
@@ -16,11 +25,7 @@ func NewProducer(brokers []string) (*Producer, error) {
 	config.Producer.Idempotent = true
 	// Sarama requires a single in-flight request when idempotence is enabled.
 	config.Net.MaxOpenRequests = 1
-	syncProducer, err := sarama.NewSyncProducer(brokers, config)
-	if err != nil {
-		return nil, err
-	}
-	return &Producer{syncProducer: syncProducer}, nil
+	return config
 }
 
 func (p *Producer) Send(topic string, key string, value []byte) error {
