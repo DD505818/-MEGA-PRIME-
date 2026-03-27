@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: impact-model
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: impact-model
+  template:
+    metadata:
+      labels:
+        app: impact-model
+    spec:
+      containers:
+        - name: impact-model
+          image: impact-model:latest

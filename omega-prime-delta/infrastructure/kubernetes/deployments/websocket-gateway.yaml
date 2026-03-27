@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: websocket-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: websocket-gateway
+  template:
+    metadata:
+      labels:
+        app: websocket-gateway
+    spec:
+      containers:
+        - name: websocket-gateway
+          image: websocket-gateway:latest

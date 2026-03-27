@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: capital-allocator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: capital-allocator
+  template:
+    metadata:
+      labels:
+        app: capital-allocator
+    spec:
+      containers:
+        - name: capital-allocator
+          image: capital-allocator:latest

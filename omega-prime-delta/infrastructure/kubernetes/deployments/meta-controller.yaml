@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: meta-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: meta-controller
+  template:
+    metadata:
+      labels:
+        app: meta-controller
+    spec:
+      containers:
+        - name: meta-controller
+          image: meta-controller:latest

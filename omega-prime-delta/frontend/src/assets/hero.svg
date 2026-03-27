@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 240">
+  <rect width="800" height="240" fill="#091a34"/>
+  <path d="M0 180 C180 110, 280 260, 800 120 L800 240 L0 240 Z" fill="#1f6db3" opacity="0.7"/>
+  <text x="30" y="64" fill="#99e8ff" font-size="36" font-family="Arial">ΩMEGA PRIME Δ</text>
+</svg>

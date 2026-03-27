@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: execution-engine
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: execution-engine
+  template:
+    metadata:
+      labels:
+        app: execution-engine
+    spec:
+      containers:
+        - name: execution-engine
+          image: execution-engine:latest

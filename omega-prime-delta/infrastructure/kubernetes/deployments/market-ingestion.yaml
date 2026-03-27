@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: market-ingestion
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: market-ingestion
+  template:
+    metadata:
+      labels:
+        app: market-ingestion
+    spec:
+      containers:
+        - name: market-ingestion
+          image: market-ingestion:latest
