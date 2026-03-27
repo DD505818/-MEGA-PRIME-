@@ -14,6 +14,7 @@ func NewProducer(brokers []string) (*Producer, error) {
 	config.Producer.Retry.Max = 10
 	config.Producer.Return.Successes = true
 	config.Producer.Idempotent = true
+	config.Net.MaxOpenRequests = 1
 	syncProducer, err := sarama.NewSyncProducer(brokers, config)
 	if err != nil {
 		return nil, err
