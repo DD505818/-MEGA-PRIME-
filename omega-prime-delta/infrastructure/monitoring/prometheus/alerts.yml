@@ -1,0 +1,17 @@
+groups:
+  - name: omega_slippage
+    rules:
+      - alert: HighSlippage
+        expr: slippage_bps > 15
+        for: 1m
+        annotations:
+          summary: "Slippage > 15 bps"
+      - alert: LowFillRate
+        expr: fill_rate < 0.95
+        for: 2m
+      - alert: HighRejectRate
+        expr: reject_rate > 0.05
+        for: 1m
+      - alert: LatencySpike
+        expr: order_latency_ms > 250
+        for: 30s
