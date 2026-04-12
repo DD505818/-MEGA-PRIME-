@@ -17,6 +17,12 @@ This directory contains the runnable baseline for ΩMEGA Prime Δ across backend
 - **CI guardrail**
   - GitHub Actions workflow and script to fail changes when sentinel placeholders appear in critical bootstrap files.
 
+- **Delivery contracts and deployment packaging**
+  - Helm chart under `infrastructure/helm/omega-prime-delta` for market-ingestion and portfolio-service deployments.
+  - Service contracts in `contracts/service-contracts.yaml` and protobuf definitions in `contracts/proto/omega/prime/delta/v1/`.
+  - CI gate scripts under `scripts/ci/` enforcing contract, protobuf, and Helm chart integrity in pull requests.
+
+
 ## Quick start
 
 1. Export required environment variables for the service you plan to run.

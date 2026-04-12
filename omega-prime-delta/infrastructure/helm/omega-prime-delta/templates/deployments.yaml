@@ -1,0 +1,67 @@
+{{- if .Values.services.marketIngestion.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "omega-prime-delta.fullname" . }}-market-ingestion
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: {{ .Values.services.marketIngestion.replicas }}
+  selector:
+    matchLabels:
+      app: market-ingestion
+  template:
+    metadata:
+      labels:
+        app: market-ingestion
+      annotations:
+        {{- toYaml .Values.podAnnotations | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "omega-prime-delta.serviceAccountName" . }}
+      containers:
+        - name: market-ingestion
+          image: "{{ .Values.image.repository }}/market-ingestion:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.services.marketIngestion.containerPort }}
+          env:
+            {{- range $k, $v := .Values.services.marketIngestion.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+---
+{{- end }}
+{{- if .Values.services.portfolioService.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "omega-prime-delta.fullname" . }}-portfolio-service
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: {{ .Values.services.portfolioService.replicas }}
+  selector:
+    matchLabels:
+      app: portfolio-service
+  template:
+    metadata:
+      labels:
+        app: portfolio-service
+      annotations:
+        {{- toYaml .Values.podAnnotations | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "omega-prime-delta.serviceAccountName" . }}
+      containers:
+        - name: portfolio-service
+          image: "{{ .Values.image.repository }}/portfolio-service:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.services.portfolioService.containerPort }}
+          env:
+            {{- range $k, $v := .Values.services.portfolioService.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+{{- end }}

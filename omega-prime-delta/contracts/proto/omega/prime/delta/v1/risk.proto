@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package omega.prime.delta.v1;
+
+option go_package = "github.com/omega-prime-delta/backend/gen/proto/omega/prime/delta/v1;deltav1";
+
+message RiskCheckRequest {
+  string request_id = 1;
+  string order_id = 2;
+  string account_id = 3;
+  string symbol = 4;
+  double notional = 5;
+  double leverage = 6;
+}
+
+message RiskCheckDecision {
+  string request_id = 1;
+  string order_id = 2;
+  bool approved = 3;
+  repeated string reasons = 4;
+  double max_allowed_notional = 5;
+}

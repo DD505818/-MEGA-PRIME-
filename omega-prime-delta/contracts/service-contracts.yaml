@@ -1,0 +1,59 @@
+version: 1
+system: omega-prime-delta
+owners:
+  - platform@omega-prime.local
+
+http_contracts:
+  - service: market-ingestion
+    base_path: /v1/market
+    endpoints:
+      - method: GET
+        path: /health
+        response_schema: HealthStatus
+      - method: POST
+        path: /ticks
+        request_schema: MarketTickBatch
+        response_schema: IngestionAck
+  - service: portfolio-service
+    base_path: /v1/portfolio
+    endpoints:
+      - method: GET
+        path: /positions
+        response_schema: PositionList
+      - method: POST
+        path: /rebalance
+        request_schema: RebalanceRequest
+        response_schema: RebalanceResult
+  - service: execution-engine
+    base_path: /v1/execution
+    endpoints:
+      - method: POST
+        path: /orders
+        request_schema: PlaceOrderRequest
+        response_schema: PlaceOrderResponse
+      - method: GET
+        path: /orders/{order_id}
+        response_schema: OrderStatus
+
+kafka_contracts:
+  - topic: omega.market.ticks.v1
+    key: symbol
+    value_schema: omega.prime.delta.v1.MarketTick
+    producers: [market-ingestion]
+    consumers: [strategy-engine, risk-engine]
+  - topic: omega.execution.orders.v1
+    key: order_id
+    value_schema: omega.prime.delta.v1.OrderIntent
+    producers: [strategy-engine]
+    consumers: [execution-engine, risk-engine]
+  - topic: omega.execution.fills.v1
+    key: order_id
+    value_schema: omega.prime.delta.v1.ExecutionFill
+    producers: [execution-engine]
+    consumers: [portfolio-service, capital-allocator]
+
+slos:
+  - name: order_ack_p95
+    objective: "< 150ms"
+  - name: tick_to_signal_p95
+    objective: "< 400ms"

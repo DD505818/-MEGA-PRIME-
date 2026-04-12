@@ -1,0 +1,38 @@
+namespace: omega-prime-delta
+
+image:
+  repository: ghcr.io/omega-prime-delta
+  tag: latest
+  pullPolicy: IfNotPresent
+
+services:
+  marketIngestion:
+    enabled: true
+    replicas: 2
+    containerPort: 8081
+    servicePort: 80
+    env:
+      KAFKA_BROKERS: "kafka:9092"
+      LOG_LEVEL: "info"
+  portfolioService:
+    enabled: true
+    replicas: 2
+    containerPort: 8082
+    servicePort: 80
+    env:
+      REDIS_ADDR: "redis:6379"
+      LOG_LEVEL: "info"
+
+resources:
+  limits:
+    cpu: "500m"
+    memory: "512Mi"
+  requests:
+    cpu: "100m"
+    memory: "128Mi"
+
+serviceAccount:
+  create: true
+  name: ""
+
+podAnnotations: {}

@@ -31,3 +31,28 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           python -c "import main; print('strategy-engine import ok')"
+
+  contract-and-deploy-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python for contract validation
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Validate service contracts
+        working-directory: omega-prime-delta
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyyaml
+          ./scripts/ci/validate_contracts.py
+
+      - name: Validate protobuf definitions
+        working-directory: omega-prime-delta
+        run: ./scripts/ci/validate_protos.sh
+
+      - name: Validate helm chart structure
+        working-directory: omega-prime-delta
+        run: ./scripts/ci/validate_helm.sh

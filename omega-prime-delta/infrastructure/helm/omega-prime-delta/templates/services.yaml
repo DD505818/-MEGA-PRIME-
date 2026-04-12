@@ -1,0 +1,29 @@
+{{- if .Values.services.marketIngestion.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "omega-prime-delta.fullname" . }}-market-ingestion
+  namespace: {{ .Values.namespace }}
+spec:
+  selector:
+    app: market-ingestion
+  ports:
+    - protocol: TCP
+      port: {{ .Values.services.marketIngestion.servicePort }}
+      targetPort: {{ .Values.services.marketIngestion.containerPort }}
+---
+{{- end }}
+{{- if .Values.services.portfolioService.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "omega-prime-delta.fullname" . }}-portfolio-service
+  namespace: {{ .Values.namespace }}
+spec:
+  selector:
+    app: portfolio-service
+  ports:
+    - protocol: TCP
+      port: {{ .Values.services.portfolioService.servicePort }}
+      targetPort: {{ .Values.services.portfolioService.containerPort }}
+{{- end }}
