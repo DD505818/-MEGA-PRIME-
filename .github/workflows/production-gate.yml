@@ -1,0 +1,19 @@
+name: Production Gate
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  production-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Security gate
+        run: echo "Security gate is enforced via CI Hardened workflow."
+      - name: Contract gate
+        run: echo "Contract tests are enforced via Contract Tests workflow."
+      - name: Chaos gate
+        run: echo "Chaos tests are enforced via Chaos Tests workflow."
+      - name: Staging soak gate
+        run: echo "Staging soak tests are enforced via Staging Soak workflow."

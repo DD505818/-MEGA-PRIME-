@@ -1,0 +1,9 @@
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: omega-prime
+spec:
+  spiffeIDTemplate: spiffe://omega.prime/ns/{{ .PodMeta.Namespace }}/sa/{{ .PodSpec.ServiceAccountName }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: omega-prime

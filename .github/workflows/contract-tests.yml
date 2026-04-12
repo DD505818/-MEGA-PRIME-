@@ -1,0 +1,31 @@
+name: Contract Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+
+jobs:
+  contract-tests:
+    runs-on: ubuntu-latest
+    services:
+      schema-registry:
+        image: apicurio/apicurio-registry-mem:2.6.2.Final
+        ports:
+          - 8081:8080
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest confluent-kafka requests
+      - name: Run Kafka contract tests
+        run: pytest tests/contract -v
+      - name: Validate topic schema compatibility
+        run: |
+          for topic in omega.trades omega.risk omega.portfolio; do
+            python scripts/validate_schema.py --topic "$topic" --registry-url http://localhost:8081/apis/registry/v2
+          done

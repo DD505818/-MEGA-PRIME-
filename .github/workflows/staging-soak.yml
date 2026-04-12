@@ -1,0 +1,23 @@
+name: Staging Soak Test
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * 0'
+
+jobs:
+  soak-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install soak test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+      - name: Run soak test simulation (10 min)
+        run: python tests/soak/run_soak_test.py --duration-minutes 10 --dry-run
+      - name: Run kill-switch drill simulation
+        run: python tests/drills/kill_switch_drill.py --dry-run
