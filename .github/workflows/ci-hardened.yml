@@ -1,0 +1,72 @@
+name: CI Hardened
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install SCA scanners
+        run: |
+          python -m pip install --upgrade pip
+          pip install pip-audit safety pip-tools
+
+      - name: Pin and scan Python dependencies
+        run: |
+          for file in services/*/requirements.txt gateway-api/requirements.txt; do
+            echo "Auditing ${file}"
+            pip-audit --requirement "${file}" --desc
+            safety check -r "${file}" || true
+          done
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Node dependency audit
+        run: |
+          cd control-panel
+          npm ci --ignore-scripts
+          npm audit --audit-level=high
+          npx --yes lockfile-lint --path package-lock.json --type npm --validate-https
+
+      - name: Build risk-engine image
+        run: docker build -t omega-prime/risk-engine:test ./services/risk-engine
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: omega-prime/risk-engine:test
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+
+      - name: Upload Trivy SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+
+      - name: Install Grype
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+
+      - name: Scan image with Grype
+        run: |
+          grype omega-prime/risk-engine:test --fail-on high --output sarif > grype-results.sarif
+
+      - name: Upload Grype SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: grype-results.sarif

@@ -1,0 +1,24 @@
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: execution-engine-only
+  namespace: omega-prime
+spec:
+  selector:
+    matchLabels:
+      app: execution-router
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals: ["cluster.local/ns/omega-prime/sa/risk-engine"]
+      to:
+        - operation:
+            methods: ["POST"]
+            paths: ["/execute"]
+    - from:
+        - source:
+            principals: ["cluster.local/ns/omega-prime/sa/gateway-api"]
+      to:
+        - operation:
+            methods: ["GET"]

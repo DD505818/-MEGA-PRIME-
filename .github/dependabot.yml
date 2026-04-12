@@ -1,0 +1,17 @@
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /gateway-api
+    schedule:
+      interval: daily
+    commit-message:
+      prefix: fix(deps)
+    open-pull-requests-limit: 5
+    groups:
+      python-minor:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /control-panel
+    schedule:
+      interval: daily

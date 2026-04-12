@@ -1,0 +1,24 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: exchange-outage
+spec:
+  action: loss
+  mode: all
+  loss:
+    loss: '100'
+    correlation: '100'
+  duration: 30s
+  selector:
+    namespaces:
+      - omega-prime
+    labelSelectors:
+      app: market-data-service
+  direction: to
+  target:
+    mode: all
+    selector:
+      namespaces:
+        - omega-prime
+      labelSelectors:
+        app: execution-router

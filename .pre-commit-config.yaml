@@ -1,0 +1,13 @@
+repos:
+  - repo: local
+    hooks:
+      - id: pip-audit
+        name: pip-audit gateway requirements
+        entry: pip-audit --requirement gateway-api/requirements.txt
+        language: system
+        files: ^gateway-api/requirements\.txt$
+      - id: safety
+        name: safety gateway requirements
+        entry: safety check -r gateway-api/requirements.txt
+        language: system
+        files: ^gateway-api/requirements\.txt$
