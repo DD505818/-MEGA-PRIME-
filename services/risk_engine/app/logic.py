@@ -6,8 +6,11 @@ RISK_LIMITS = {
 }
 
 def should_halt(state):
+    if state is None:
+        raise ValueError("state is required")
+
     return any([
-        state.get("loss_pct", 0) >= RISK_LIMITS["daily_loss_limit"],
-        state.get("drawdown", 0) >= RISK_LIMITS["max_drawdown"],
-        state.get("exposure", 0) >= RISK_LIMITS["max_exposure"],
+        float(state.get("loss_pct", 0)) >= RISK_LIMITS["daily_loss_limit"],
+        float(state.get("drawdown", 0)) >= RISK_LIMITS["max_drawdown"],
+        float(state.get("exposure", 0)) >= RISK_LIMITS["max_exposure"],
     ])
