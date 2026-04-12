@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: radial-gradient(circle at 20% 5%, #17233b, transparent 40%), #050a14;
+    color: #e8f2ff;
+    font-family: Inter, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: #0a1220; }
+  ::-webkit-scrollbar-thumb { background: #263753; border-radius: 2px; }
+}
+
+@layer components {
+  .card {
+    @apply border border-border rounded-xl bg-panel p-3;
+  }
+  .btn-primary {
+    @apply border border-blue/40 bg-panel2 text-blue px-3 py-1.5 rounded-full text-sm
+           hover:border-blue/70 hover:bg-blue/10 transition-all duration-200;
+  }
+  .btn-danger {
+    @apply border border-red/40 bg-panel2 text-red px-3 py-1.5 rounded-full text-sm
+           hover:border-red/70 hover:bg-red/10 transition-all duration-200;
+  }
+  .badge-live {
+    @apply text-green font-bold text-xs tracking-wider;
+  }
+  .badge-paper {
+    @apply text-gold font-bold text-xs tracking-wider;
+  }
+  .kicker {
+    @apply text-xs uppercase tracking-wider text-muted mb-1;
+  }
+  .metric-value {
+    @apply text-xl font-bold font-mono text-text;
+  }
+  .tab {
+    @apply px-4 py-2 text-sm text-muted border-b-2 border-transparent
+           hover:text-text hover:border-blue/50 transition-all cursor-pointer;
+  }
+  .tab-active {
+    @apply text-text border-blue;
+  }
+}

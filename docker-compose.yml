@@ -1,9 +1,18 @@
 version: '3.9'
+
+x-agent-base: &agent-base
+  depends_on: [kafka]
+  environment:
+    KAFKA_BOOTSTRAP: kafka:9092
+  restart: unless-stopped
+
 services:
+  # ── Infrastructure ──────────────────────────────────────────────────
   zookeeper:
     image: bitnami/zookeeper:3.9
     environment:
       - ALLOW_ANONYMOUS_LOGIN=yes
+    restart: unless-stopped
 
   kafka:
     image: bitnami/kafka:3.7
@@ -12,49 +21,188 @@ services:
       - ALLOW_PLAINTEXT_LISTENER=yes
       - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092
       - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
-    depends_on:
-      - zookeeper
+      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
+    depends_on: [zookeeper]
+    restart: unless-stopped
 
+  # ── Core Microservices (8) ──────────────────────────────────────────
   market-data-service:
     build: ./services/market-data-service
     depends_on: [kafka]
+    environment: {KAFKA_BOOTSTRAP: kafka:9092}
+    restart: unless-stopped
+
   feature-engine:
     build: ./services/feature-engine
     depends_on: [kafka]
+    environment: {KAFKA_BOOTSTRAP: kafka:9092}
+    restart: unless-stopped
+
   strategy-engine:
     build: ./services/strategy-engine
     depends_on: [kafka]
+    environment: {KAFKA_BOOTSTRAP: kafka:9092}
+    restart: unless-stopped
+
   rl-agent-cluster:
     build: ./services/rl-agent-cluster
     depends_on: [kafka]
-  execution-router:
-    build: ./services/execution-router
-    depends_on: [kafka]
+    environment: {KAFKA_BOOTSTRAP: kafka:9092}
+    restart: unless-stopped
+
   risk-engine:
     build: ./services/risk-engine
     depends_on: [kafka]
+    environment: {KAFKA_BOOTSTRAP: kafka:9092}
+    restart: unless-stopped
+
   portfolio-service:
     build: ./services/portfolio-service
     depends_on: [kafka]
+    environment: {KAFKA_BOOTSTRAP: kafka:9092}
+    restart: unless-stopped
+
   backtesting-cluster:
     build: ./services/backtesting-cluster
     depends_on: [kafka]
+    environment: {KAFKA_BOOTSTRAP: kafka:9092}
+    restart: unless-stopped
 
+  execution-router:
+    build: ./services/execution-router
+    depends_on: [kafka, zk-proof-service]
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      ZK_PROOF_URL: http://zk-proof-service:8000
+    restart: unless-stopped
+
+  # ── ZK-Proof Risk Verification ──────────────────────────────────────
+  zk-proof-service:
+    build: ./services/zk-proof-service
+    depends_on: [kafka]
+    ports: ["8081:8000"]
+    restart: unless-stopped
+
+  # ── API Gateway + WebSocket ─────────────────────────────────────────
   gateway-api:
     build: ./gateway-api
+    depends_on: [kafka]
+    ports: ["8080:8000"]
+    environment: {KAFKA_BOOTSTRAP: kafka:9092}
+    restart: unless-stopped
+
+  # ── 19 Agent Services ───────────────────────────────────────────────
+  agent-ceo:
+    build: ./services/agents/ceo
+    <<: *agent-base
+
+  agent-cfo:
+    build: ./services/agents/cfo
+    <<: *agent-base
+
+  agent-mamba:
+    build: ./services/agents/mamba
+    <<: *agent-base
+
+  agent-surge:
+    build: ./services/agents/surge
+    <<: *agent-base
+
+  agent-arb:
+    build: ./services/agents/arb
+    <<: *agent-base
+
+  agent-opt:
+    build: ./services/agents/opt
+    <<: *agent-base
+
+  agent-gold:
+    build: ./services/agents/gold
+    <<: *agent-base
+
+  agent-guard:
+    build: ./services/agents/guard
+    <<: *agent-base
+
+  agent-maker:
+    build: ./services/agents/maker
+    <<: *agent-base
+
+  agent-twin:
+    build: ./services/agents/twin
+    <<: *agent-base
+
+  agent-nexus:
+    build: ./services/agents/nexus
+    <<: *agent-base
+
+  agent-senti:
+    build: ./services/agents/senti
+    <<: *agent-base
+
+  agent-orbit:
+    build: ./services/agents/orbit
+    <<: *agent-base
+
+  agent-oracle:
+    build: ./services/agents/oracle
+    <<: *agent-base
+
+  agent-harvest:
+    build: ./services/agents/harvest
+    <<: *agent-base
+
+  agent-stake:
+    build: ./services/agents/stake
+    <<: *agent-base
+
+  agent-mev-hunter:
+    build: ./services/agents/mev-hunter
+    <<: *agent-base
+
+  agent-midas:
+    build: ./services/agents/midas
+    <<: *agent-base
+
+  agent-hi-darts:
+    build: ./services/agents/hi-darts
+    <<: *agent-base
+
+  # ── Frontend ────────────────────────────────────────────────────────
+  dashboard-react:
+    build: ./dashboard-react
+    ports: ["3000:80"]
+    depends_on: [gateway-api]
+    restart: unless-stopped
+
   dashboard:
     build: ./dashboard
-    ports: ["3000:3000"]
+    ports: ["3004:3000"]
+    restart: unless-stopped
+
   control-panel:
     build: ./control-panel
     ports: ["3001:3001"]
+    restart: unless-stopped
 
+  # ── Monitoring ──────────────────────────────────────────────────────
   prometheus:
     image: prom/prometheus:latest
     volumes:
       - ./infrastructure/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports: ["9090:9090"]
+    restart: unless-stopped
+
   grafana:
     image: grafana/grafana:latest
     ports: ["3002:3000"]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: omega_prime_2026
+    restart: unless-stopped
+
   alertmanager:
     image: prom/alertmanager:latest
+    volumes:
+      - ./infrastructure/monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+    ports: ["9093:9093"]
+    restart: unless-stopped

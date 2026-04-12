@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard-react
+  namespace: omega-prime
+  labels:
+    app: dashboard-react
+    tier: frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: dashboard-react
+  template:
+    metadata:
+      labels:
+        app: dashboard-react
+    spec:
+      containers:
+        - name: dashboard-react
+          image: omega-prime/dashboard-react:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dashboard-react
+  namespace: omega-prime
+spec:
+  type: LoadBalancer
+  selector:
+    app: dashboard-react
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
