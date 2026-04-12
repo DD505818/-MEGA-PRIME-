@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: omega-prime
+  labels:
+    app.kubernetes.io/name: omega-prime
+    app.kubernetes.io/part-of: omega-prime

@@ -1,0 +1,21 @@
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: execution-engine
+  namespace: omega-prime
+spec:
+  hosts:
+    - execution-engine
+  http:
+    - match:
+        - headers:
+            canary:
+              exact: "true"
+      route:
+        - destination:
+            host: execution-engine-canary
+          weight: 10
+    - route:
+        - destination:
+            host: execution-engine-stable
+          weight: 90

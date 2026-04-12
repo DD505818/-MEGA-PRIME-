@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: strategy-engine
+  namespace: omega-prime
+  labels:
+    app: strategy-engine
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: strategy-engine
+  template:
+    metadata:
+      labels:
+        app: strategy-engine
+    spec:
+      containers:
+        - name: strategy-engine
+          image: omega/strategy-engine:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8004
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8004
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8004
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 1
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: strategy-engine
+  namespace: omega-prime
+spec:
+  selector:
+    app: strategy-engine
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8004

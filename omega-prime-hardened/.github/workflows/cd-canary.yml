@@ -1,0 +1,19 @@
+name: cd-canary
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy-canary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Canary deploy
+        run: bash scripts/deploy-canary.sh
+      - name: Canary health gate
+        run: |
+          # placeholder for SLO checks before progressive rollout
+          echo "Checking slippage/fill/reject/latency SLOs"
+      - name: Rollback on failure
+        if: failure()
+        run: bash scripts/rollback.sh

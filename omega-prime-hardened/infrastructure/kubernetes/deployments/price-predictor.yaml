@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: price-predictor
+  namespace: omega-prime
+  labels:
+    app: price-predictor
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: price-predictor
+  template:
+    metadata:
+      labels:
+        app: price-predictor
+    spec:
+      containers:
+        - name: price-predictor
+          image: omega/price-predictor:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8003
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8003
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8003
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 1
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: price-predictor
+  namespace: omega-prime
+spec:
+  selector:
+    app: price-predictor
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8003

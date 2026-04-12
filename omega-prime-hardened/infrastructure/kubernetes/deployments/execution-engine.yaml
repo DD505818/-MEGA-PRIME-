@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: execution-engine
+  namespace: omega-prime
+  labels:
+    app: execution-engine
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: execution-engine
+  template:
+    metadata:
+      labels:
+        app: execution-engine
+    spec:
+      containers:
+        - name: execution-engine
+          image: omega/execution-engine:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3004
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3004
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3004
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 1
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: execution-engine
+  namespace: omega-prime
+spec:
+  selector:
+    app: execution-engine
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3004

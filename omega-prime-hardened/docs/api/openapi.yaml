@@ -1,0 +1,38 @@
+openapi: 3.1.0
+info:
+  title: Omega Prime Delta Risk API
+  version: 1.0.0
+paths:
+  /health:
+    get:
+      summary: Service health status
+      responses:
+        '200':
+          description: Healthy
+  /validate:
+    post:
+      summary: Validate an order against current risk controls
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                order:
+                  type: object
+                  properties:
+                    orderId: { type: string }
+                    symbol: { type: string }
+                    side: { type: string }
+                    qty: { type: number }
+                    type: { type: string }
+                    price: { type: number }
+                    agent: { type: string }
+      responses:
+        '200':
+          description: Validated
+        '400':
+          description: Rejected by risk checks
+        '503':
+          description: Not current leader
