@@ -6,3 +6,13 @@ def test_risk_limits_values():
 
 def test_halt_triggered():
     assert should_halt({"loss_pct": 0.03, "drawdown": 0.0, "exposure": 0.1})
+
+def test_halt_not_triggered_with_safe_state():
+    assert not should_halt({"loss_pct": 0.01, "drawdown": 0.05, "exposure": 0.10})
+
+def test_should_halt_requires_state():
+    try:
+        should_halt(None)
+        assert False, "Expected ValueError when state is None"
+    except ValueError as exc:
+        assert "state is required" in str(exc)
