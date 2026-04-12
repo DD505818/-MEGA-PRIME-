@@ -1,0 +1,14 @@
+apiVersion: v2
+name: omega-prime-delta
+description: Helm chart for ΩMEGA Prime Δ core backend services
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+kubeVersion: ">=1.27.0-0"
+keywords:
+  - trading
+  - execution
+  - risk
+home: https://github.com/example/omega-prime-delta
+maintainers:
+  - name: omega-prime-platform
