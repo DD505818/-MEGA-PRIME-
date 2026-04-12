@@ -1,0 +1,17 @@
+name: schema-migrate
+
+on:
+  workflow_dispatch:
+    inputs:
+      direction:
+        description: "Migration direction (up/down)"
+        required: true
+        default: "up"
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run migration
+        run: bash scripts/schema-migrate.sh "${{ github.event.inputs.direction }}"

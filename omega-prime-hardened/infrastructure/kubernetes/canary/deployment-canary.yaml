@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: execution-engine-canary
+  namespace: omega-prime
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: execution-engine
+      track: canary
+  template:
+    metadata:
+      labels:
+        app: execution-engine
+        track: canary
+    spec:
+      containers:
+        - name: execution-engine
+          image: ghcr.io/example/omega-prime/execution-engine:canary
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
