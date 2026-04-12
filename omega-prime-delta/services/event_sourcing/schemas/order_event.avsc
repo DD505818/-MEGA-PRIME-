@@ -1,0 +1,13 @@
+{
+  "type": "record",
+  "name": "OrderEvent",
+  "namespace": "omega.events",
+  "fields": [
+    {"name": "event_id", "type": "string"},
+    {"name": "event_type", "type": "string"},
+    {"name": "aggregate_id", "type": "string"},
+    {"name": "timestamp", "type": "string"},
+    {"name": "data", "type": "string"},
+    {"name": "version", "type": "int"}
+  ]
+}

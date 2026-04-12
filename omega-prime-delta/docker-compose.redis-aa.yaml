@@ -1,0 +1,32 @@
+services:
+  redis-us-east:
+    image: redislabs/redismod:latest
+    ports:
+      - "6379:6379"
+    environment:
+      - REDIS_ARGS=--loadmodule /usr/lib/redis/modules/redisjson.so --cluster-enabled yes
+    volumes:
+      - redis-data-us:/data
+
+  redis-eu-west:
+    image: redislabs/redismod:latest
+    ports:
+      - "6380:6379"
+    environment:
+      - REDIS_ARGS=--loadmodule /usr/lib/redis/modules/redisjson.so --cluster-enabled yes
+    volumes:
+      - redis-data-eu:/data
+
+  redis-ap-southeast:
+    image: redislabs/redismod:latest
+    ports:
+      - "6381:6379"
+    environment:
+      - REDIS_ARGS=--loadmodule /usr/lib/redis/modules/redisjson.so --cluster-enabled yes
+    volumes:
+      - redis-data-ap:/data
+
+volumes:
+  redis-data-us:
+  redis-data-eu:
+  redis-data-ap:

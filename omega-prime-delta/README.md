@@ -24,3 +24,22 @@ This directory contains the runnable baseline for ΩMEGA Prime Δ across backend
 3. Start backend services from `omega-prime-delta/backend/cmd/...`.
 4. Start ML services with `python -m <module>.service` or run training scripts directly.
 5. Build and serve the frontend with `frontend/Dockerfile`.
+
+
+## Hardened controls (April 2026 update)
+
+The repository now includes a hardening baseline for controlled production rollouts:
+
+- Canary deployment and traffic split manifests under `infrastructure/kubernetes/canary/`
+- Prometheus alert rules for slippage/fill/reject/latency in `infrastructure/monitoring/prometheus/alerts.yml`
+- Operational scripts for canary deploy, rollback, and schema migration in `scripts/`
+- GitHub Actions pipelines for CI, canary CD, and schema migration under `.github/workflows/`
+
+See `docs/HARDENING_BLUEPRINT.md` for details.
+
+## Advanced add-ons (v9 extension)
+
+- Kafka event sourcing scaffolding in `services/event_sourcing/` with replay-focused producer/consumer modules.
+- FIX 4.4 gateway scaffolding in `services/fix_gateway/` for inbound/outbound prime broker order routing.
+- Multi-region active-active Redis helper in `backend/shared/utils/active_active_redis.py` plus deployment manifests (`docker-compose.redis-aa.yaml`, `infrastructure/kubernetes/redis-aa.yaml`).
+- Unit tests for event sourcing replay and active-active Redis behavior in `tests/unit/`.

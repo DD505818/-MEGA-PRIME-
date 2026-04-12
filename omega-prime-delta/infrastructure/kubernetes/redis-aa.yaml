@@ -1,0 +1,16 @@
+apiVersion: redis.redis.com/v1alpha1
+kind: RedisEnterpriseActiveActiveDatabase
+metadata:
+  name: omega-prime-crdb
+spec:
+  participatingClusters:
+    - name: us-east-cluster
+      url: https://redis-us-east.example.com
+    - name: eu-west-cluster
+      url: https://redis-eu-west.example.com
+    - name: ap-southeast-cluster
+      url: https://redis-ap-southeast.example.com
+  databaseName: omega-db
+  memorySize: 2GB
+  conflictResolution: lww
+  persistence: true

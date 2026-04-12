@@ -1,0 +1,13 @@
+{
+  "type": "record",
+  "name": "FillEvent",
+  "namespace": "omega.events",
+  "fields": [
+    {"name": "event_id", "type": "string"},
+    {"name": "order_id", "type": "string"},
+    {"name": "symbol", "type": "string"},
+    {"name": "qty", "type": "double"},
+    {"name": "price", "type": "double"},
+    {"name": "timestamp", "type": "string"}
+  ]
+}
