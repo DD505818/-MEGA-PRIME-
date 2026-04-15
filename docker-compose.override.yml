@@ -1,0 +1,43 @@
+version: '3.9'
+
+services:
+  # Safety defaults (fail-closed). This override is intentionally conservative.
+  execution-router:
+    environment:
+      LIVE_EXECUTION_ENABLED: "false"
+      PAPER_TRADING_ONLY: "true"
+      OPERATOR_APPROVAL_REQUIRED: "true"
+      EXECUTION_CONSUME_TOPIC: "orders.approved"
+      EXECUTION_PRODUCE_TOPIC: "orders.fills"
+    command: ["uvicorn", "app.hardened_main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+  execution-control-service:
+    build: ./services/execution-control-service
+    environment:
+      KAFKA_BOOTSTRAP: "kafka:9092"
+      PROPOSED_TOPIC: "orders.proposed"
+      PENDING_TOPIC: "orders.pending_approval"
+      APPROVED_TOPIC: "orders.approved"
+      REJECTED_TOPIC: "orders.rejected"
+      LIVE_EXECUTION_ENABLED: "false"
+      OPERATOR_APPROVAL_REQUIRED: "true"
+      APPROVAL_JOURNAL_PATH: "/var/log/omega/approvals.journal"
+    depends_on: [kafka]
+    ports:
+      - "8010:8010"
+
+  # Optional persistence layer for idempotency/audit. Not required for baseline operation.
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: omega
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
