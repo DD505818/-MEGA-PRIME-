@@ -22,7 +22,12 @@ func NewRiskGate(riskEngineURL string) *RiskGate {
 }
 
 func (g *RiskGate) Validate(order models.Order) error {
-	body, err := json.Marshal(order)
+	payload := struct {
+		Order models.Order `json:"order"`
+	}{
+		Order: order,
+	}
+	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
