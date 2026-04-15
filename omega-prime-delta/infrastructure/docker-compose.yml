@@ -1,40 +1,47 @@
-version: "3.9"
+version: '3.8'
 services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    depends_on: [zookeeper]
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+  redis:
+    image: redis:7-alpine
+
   postgres:
-    image: postgres:16
+    image: postgres:15
     environment:
       POSTGRES_USER: omega
       POSTGRES_PASSWORD: omega
       POSTGRES_DB: omega
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-  kafka:
-    image: bitnami/kafka:3.7
-    environment:
-      KAFKA_CFG_NODE_ID: 0
-      KAFKA_CFG_PROCESS_ROLES: controller,broker
-      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
-      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 0@kafka:9093
-      ALLOW_PLAINTEXT_LISTENER: "yes"
-    ports:
-      - "9092:9092"
 
   risk-engine:
     build: ../backend
     command: ["go", "run", "./cmd/risk-engine"]
+    ports: ["3002:3002"]
     environment:
       DATABASE_URL: postgres://omega:omega@postgres:5432/omega?sslmode=disable
       KAFKA_BROKERS: kafka:9092
-    depends_on:
-      - postgres
-      - kafka
-    ports:
-      - "3002:3002"
+    depends_on: [postgres, kafka]
 
-volumes:
-  postgres_data:
+  execution-engine:
+    build: ../backend
+    command: ["go", "run", "./cmd/execution-engine"]
+    environment:
+      KAFKA_BROKERS: kafka:9092
+      RISK_ENGINE_URL: http://risk-engine:3002
+      REDIS_ADDR: redis:6379
+    depends_on: [kafka, risk-engine, redis]
+
+  frontend:
+    build: ../frontend
+    ports: ["3000:3000"]

@@ -3,28 +3,36 @@ package models
 import "time"
 
 type Order struct {
-	OrderID    string    `json:"orderId"`
+	ID         string    `json:"id"`
+	OrderID    string    `json:"orderId,omitempty"`
 	Symbol     string    `json:"symbol"`
 	Side       string    `json:"side"`
 	Qty        float64   `json:"qty"`
-	Type       string    `json:"type"`
+	Type       string    `json:"type,omitempty"`
 	Price      float64   `json:"price,omitempty"`
-	Agent      string    `json:"agent"`
-	Strategy   string    `json:"strategy"`
-	Confidence float64   `json:"confidence"`
-	Timestamp  time.Time `json:"timestamp"`
+	Agent      string    `json:"agent,omitempty"`
+	Strategy   string    `json:"strategy,omitempty"`
+	Confidence float64   `json:"confidence,omitempty"`
+	Timestamp  time.Time `json:"timestamp,omitempty"`
 }
 
 type Fill struct {
-	OrderID    string    `json:"orderId"`
-	Symbol     string    `json:"symbol"`
-	Side       string    `json:"side"`
-	Qty        float64   `json:"qty"`
-	Price      float64   `json:"price"`
-	Commission float64   `json:"commission"`
-	Agent      string    `json:"agent"`
-	Strategy   string    `json:"strategy"`
-	Timestamp  time.Time `json:"timestamp"`
+	FillID     string  `json:"fillId"`
+	OrderID    string  `json:"orderId"`
+	Symbol     string  `json:"symbol"`
+	Side       string  `json:"side"`
+	Qty        float64 `json:"qty"`
+	Price      float64 `json:"price"`
+	Commission float64 `json:"commission,omitempty"`
+	Agent      string  `json:"agent,omitempty"`
+	Strategy   string  `json:"strategy,omitempty"`
+	Timestamp  int64   `json:"timestamp"`
+}
+
+type OrderRejection struct {
+	OrderID   string `json:"orderId"`
+	Reason    string `json:"reason"`
+	Timestamp int64  `json:"timestamp"`
 }
 
 type PortfolioState struct {
