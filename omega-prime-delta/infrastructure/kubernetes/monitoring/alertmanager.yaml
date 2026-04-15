@@ -1,6 +1,32 @@
-apiVersion: v1
-kind: ConfigMap
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: alertmanager-placeholder
-data:
-  status: "implemented"
+  name: alertmanager
+  namespace: omega-prime-delta
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alertmanager
+  template:
+    metadata:
+      labels:
+        app: alertmanager
+    spec:
+      containers:
+        - name: alertmanager
+          image: prom/alertmanager:v0.27.0
+          ports:
+            - containerPort: 9093
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertmanager
+  namespace: omega-prime-delta
+spec:
+  selector:
+    app: alertmanager
+  ports:
+    - port: 9093
+      targetPort: 9093

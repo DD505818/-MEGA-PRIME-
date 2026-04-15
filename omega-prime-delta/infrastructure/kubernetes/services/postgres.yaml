@@ -1,6 +1,12 @@
 apiVersion: v1
-kind: ConfigMap
+kind: Service
 metadata:
-  name: postgres-placeholder
-data:
-  status: "implemented"
+  name: postgres
+  namespace: omega-prime-delta
+spec:
+  selector:
+    app: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
