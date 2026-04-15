@@ -52,4 +52,5 @@ services:
   frontend:
     build: ../frontend
     ports:
+      # Frontend container serves Nginx on port 80; expose it on host port 3000.
       - "3000:80"
