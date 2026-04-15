@@ -93,22 +93,26 @@ func main() {
 
 			fillBytes, _ := json.Marshal(fill)
 			if err := executedWriter.WriteMessages(ctx, kafka.Message{Value: fillBytes}); err != nil {
-				log.Printf("Failed to emit fill: %v", err)
-			} else {
-				log.Printf("Order executed: %s -> fill %s", fill.OrderID, fill.FillID)
+				log.Printf("Failed to emit fill for order %s: %v", orderID, err)
+				if rejectErr := rejectOrder(rejectedWriter, order, "execution_publish_failed"); rejectErr != nil {
+					log.Printf("Failed to emit execution publish rejection for order %s: %v", orderID, rejectErr)
+				}
+				continue
 			}
+
+			log.Printf("Order executed: %s -> fill %s", fill.OrderID, fill.FillID)
 		}
 	}
 }
 
-func rejectOrder(writer *kafka.Writer, order models.Order, reason string) {
+func rejectOrder(writer *kafka.Writer, order models.Order, reason string) error {
 	rejection := models.OrderRejection{
 		OrderID:   order.EffectiveID(),
 		Reason:    reason,
 		Timestamp: time.Now().UnixMilli(),
 	}
 	data, _ := json.Marshal(rejection)
-	_ = writer.WriteMessages(context.Background(), kafka.Message{Value: data})
+	return writer.WriteMessages(context.Background(), kafka.Message{Value: data})
 }
 
 func getEnv(key, fallback string) string {
