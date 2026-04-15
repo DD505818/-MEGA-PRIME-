@@ -9,6 +9,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/omega-prime/omega-prime-delta/backend/internal/models"
 )
 
 // Order models a normalized execution request.
@@ -155,4 +158,38 @@ func (a *simulatedAdapter) Close(ctx context.Context) error {
 		a.logger.Info("broker adapter closed", "broker", a.name)
 		return nil
 	}
+}
+
+// ExecutionBroker defines a normalized broker interface for order execution.
+type ExecutionBroker interface {
+	Submit(order models.Order) (*models.Fill, error)
+}
+
+// PaperBroker simulates market execution with simple slippage.
+type PaperBroker struct{}
+
+func NewPaperBroker() *PaperBroker {
+	return &PaperBroker{}
+}
+
+func (b *PaperBroker) Submit(order models.Order) (*models.Fill, error) {
+	time.Sleep(20 * time.Millisecond)
+	fillPrice := order.Price
+	if order.Side == "BUY" {
+		fillPrice *= 1.0001
+	} else {
+		fillPrice *= 0.9999
+	}
+	orderID := order.EffectiveID()
+	return &models.Fill{
+		FillID:    uuid.New().String(),
+		OrderID:   orderID,
+		Symbol:    order.Symbol,
+		Side:      order.Side,
+		Qty:       order.Qty,
+		Price:     fillPrice,
+		Timestamp: time.Now().UTC(),
+		Agent:     order.Agent,
+		Strategy:  order.Strategy,
+	}, nil
 }

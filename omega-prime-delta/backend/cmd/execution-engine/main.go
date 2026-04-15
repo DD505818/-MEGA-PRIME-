@@ -1,64 +1,119 @@
 package main
 
 import (
-	"bytes"
+	"context"
 	"encoding/json"
 	"log"
-	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
-	"github.com/IBM/sarama"
+	"github.com/omega-prime/omega-prime-delta/backend/internal/execution"
+	"github.com/omega-prime/omega-prime-delta/backend/internal/models"
+	"github.com/segmentio/kafka-go"
 )
 
-func estimateSlippage(order map[string]interface{}) float64 {
-	url := os.Getenv("IMPACT_MODEL_URL") + "/predict"
-	data, _ := json.Marshal(order)
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(data))
-	if err != nil {
-		log.Printf("Impact model error: %v", err)
-		return 0.001 // default 10 bps
-	}
-	defer resp.Body.Close()
+func main() {
+	kafkaBrokers := getEnv("KAFKA_BROKERS", "kafka:9092")
 
-	var result map[string]float64
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return 0.001
+	approvedReader := kafka.NewReader(kafka.ReaderConfig{
+		Brokers: []string{kafkaBrokers},
+		Topic:   "orders.approved",
+		GroupID: "execution-engine",
+	})
+	defer approvedReader.Close()
+
+	executedWriter := &kafka.Writer{
+		Addr:     kafka.TCP(kafkaBrokers),
+		Topic:    "orders.executed",
+		Balancer: &kafka.LeastBytes{},
 	}
-	if slippage, ok := result["slippage"]; ok {
-		return slippage
+	defer executedWriter.Close()
+
+	rejectedWriter := &kafka.Writer{
+		Addr:     kafka.TCP(kafkaBrokers),
+		Topic:    "orders.rejected",
+		Balancer: &kafka.LeastBytes{},
 	}
-	return 0.001
+	defer rejectedWriter.Close()
+
+	riskGate := execution.NewRiskGate(getEnv("RISK_ENGINE_URL", "http://risk-engine:3002"))
+	idempotency := execution.NewIdempotencyStore()
+	router := execution.NewRouter()
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	log.Println("Execution engine started - listening on orders.approved")
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Println("Shutting down execution engine")
+			return
+		default:
+			msg, err := approvedReader.ReadMessage(ctx)
+			if err != nil {
+				log.Printf("Read error: %v", err)
+				continue
+			}
+
+			var order models.Order
+			if err := json.Unmarshal(msg.Value, &order); err != nil {
+				log.Printf("Unmarshal error: %v", err)
+				continue
+			}
+
+			orderID := order.EffectiveID()
+			if orderID == "" {
+				log.Printf("Order missing id: %+v", order)
+				rejectOrder(rejectedWriter, order, "missing_order_id")
+				continue
+			}
+
+			if !idempotency.TryLock(orderID) {
+				log.Printf("Duplicate order rejected: %s", orderID)
+				rejectOrder(rejectedWriter, order, "duplicate_idempotency")
+				continue
+			}
+
+			if err := riskGate.Validate(order); err != nil {
+				log.Printf("Risk rejection: %v", err)
+				rejectOrder(rejectedWriter, order, err.Error())
+				continue
+			}
+
+			fill, err := router.Execute(order)
+			if err != nil {
+				log.Printf("Execution error: %v", err)
+				rejectOrder(rejectedWriter, order, err.Error())
+				continue
+			}
+
+			fillBytes, _ := json.Marshal(fill)
+			if err := executedWriter.WriteMessages(ctx, kafka.Message{Value: fillBytes}); err != nil {
+				log.Printf("Failed to emit fill: %v", err)
+			} else {
+				log.Printf("Order executed: %s -> fill %s", fill.OrderID, fill.FillID)
+			}
+		}
+	}
 }
 
-func main() {
-	brokers := []string{os.Getenv("KAFKA_BROKERS")}
-	consumer, err := sarama.NewConsumer(brokers, nil)
-	if err != nil {
-		log.Fatal(err)
+func rejectOrder(writer *kafka.Writer, order models.Order, reason string) {
+	rejection := models.OrderRejection{
+		OrderID:   order.EffectiveID(),
+		Reason:    reason,
+		Timestamp: time.Now().UnixMilli(),
 	}
-	defer consumer.Close()
+	data, _ := json.Marshal(rejection)
+	_ = writer.WriteMessages(context.Background(), kafka.Message{Value: data})
+}
 
-	partitionConsumer, err := consumer.ConsumePartition("orders.requested", 0, sarama.OffsetNewest)
-	if err != nil {
-		log.Fatal(err)
+func getEnv(key, fallback string) string {
+	if val := os.Getenv(key); val != "" {
+		return val
 	}
-	defer partitionConsumer.Close()
-
-	for msg := range partitionConsumer.Messages() {
-		if msg == nil {
-			continue
-		}
-		var order map[string]interface{}
-		if err := json.Unmarshal(msg.Value, &order); err != nil {
-			log.Printf("Invalid order payload: %v", err)
-			continue
-		}
-
-		slippage := estimateSlippage(order)
-		if qty, ok := order["qty"].(float64); ok && slippage < 0.0005 {
-			order["qty"] = qty * 1.2
-		}
-		log.Printf("Prepared order for execution: symbol=%v qty=%v slippage=%.6f", order["symbol"], order["qty"], slippage)
-		// TODO: route to concrete broker adapters and publish fills
-	}
+	return fallback
 }
