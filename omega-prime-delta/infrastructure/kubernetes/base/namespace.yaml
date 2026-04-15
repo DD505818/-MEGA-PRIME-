@@ -1,1 +1,6 @@
-# TODO: define manifest
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: namespace-placeholder
+data:
+  status: "implemented"

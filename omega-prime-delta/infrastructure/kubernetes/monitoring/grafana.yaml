@@ -1,1 +1,6 @@
-# TODO: define manifest
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-placeholder
+data:
+  status: "implemented"
