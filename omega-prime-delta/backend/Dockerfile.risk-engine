@@ -1,5 +1,6 @@
 FROM golang:1.22-alpine AS builder
-WORKDIR /src
+
+WORKDIR /build
 COPY . .
 RUN go build -o /out/risk-engine ./cmd/risk-engine
 

@@ -1,1 +1,6 @@
-# TODO: define manifest
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-placeholder
+data:
+  status: "implemented"

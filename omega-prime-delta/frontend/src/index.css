@@ -1,1 +1,10 @@
-TODO
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+  background: #050a14;
+  color: #e8f2ff;
+}

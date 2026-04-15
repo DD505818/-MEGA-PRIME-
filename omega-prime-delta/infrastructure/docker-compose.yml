@@ -25,7 +25,9 @@ services:
       - "9092:9092"
 
   risk-engine:
-    build: ../backend
+    build:
+      context: ../backend
+      dockerfile: Dockerfile.risk-engine
     command: ["go", "run", "./cmd/risk-engine"]
     environment:
       DATABASE_URL: postgres://omega:omega@postgres:5432/omega?sslmode=disable
@@ -35,6 +37,17 @@ services:
       - kafka
     ports:
       - "3002:3002"
+
+  execution-router:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile.execution-router
+    environment:
+      KAFKA_BROKERS: kafka:9092
+    depends_on:
+      - kafka
+    ports:
+      - "8080:8080"
 
 volumes:
   postgres_data:
