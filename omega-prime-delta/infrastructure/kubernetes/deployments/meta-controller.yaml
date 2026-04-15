@@ -1,6 +1,45 @@
-apiVersion: v1
-kind: ConfigMap
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: meta-controller-placeholder
-data:
-  status: "implemented"
+  name: meta-controller
+  namespace: omega-prime-delta
+  labels:
+    app: meta-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: meta-controller
+  template:
+    metadata:
+      labels:
+        app: meta-controller
+    spec:
+      containers:
+        - name: meta-controller
+          image: ghcr.io/omega-prime/meta-controller:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8102
+          env:
+            - name: LOG_LEVEL
+              value: INFO
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8102
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8102
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

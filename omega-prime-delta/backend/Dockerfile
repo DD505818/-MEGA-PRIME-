@@ -1,10 +1,18 @@
 FROM golang:1.22-alpine AS builder
 WORKDIR /src
-COPY . .
-RUN go build -o /out/risk-engine ./cmd/risk-engine
 
-FROM alpine:3.20
+RUN apk add --no-cache git
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+ARG SERVICE=./cmd/risk-engine
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o /out/service ${SERVICE}
+
+FROM gcr.io/distroless/static-debian12
 WORKDIR /app
-COPY --from=builder /out/risk-engine /usr/local/bin/risk-engine
+COPY --from=builder /out/service /usr/local/bin/omega-service
+
 EXPOSE 3002
-CMD ["risk-engine"]
+ENTRYPOINT ["/usr/local/bin/omega-service"]

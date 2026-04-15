@@ -1,6 +1,12 @@
 apiVersion: v1
-kind: ConfigMap
+kind: PersistentVolumeClaim
 metadata:
-  name: storage-placeholder
-data:
-  status: "implemented"
+  name: omega-prime-shared-pvc
+  namespace: omega-prime-delta
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: standard

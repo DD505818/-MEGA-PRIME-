@@ -1,6 +1,12 @@
 apiVersion: v1
-kind: ConfigMap
+kind: Service
 metadata:
-  name: kafka-placeholder
-data:
-  status: "implemented"
+  name: kafka
+  namespace: omega-prime-delta
+spec:
+  selector:
+    app: kafka
+  ports:
+    - name: kafka
+      port: 9092
+      targetPort: 9092
