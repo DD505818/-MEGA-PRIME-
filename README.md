@@ -1,6 +1,19 @@
 # ΩMEGA PRIME Δ PRO
 
-Institutional-grade distributed trading platform scaffold with microservices, Kafka event streaming, RL agents, research lab, and Kubernetes deployment.
+ΩMEGA PRIME Δ is the institutional-grade autonomous trading platform for mobile. 
+Monitor your portfolio in real time, deploy AI-generated strategies from natural 
+language, and track self-optimizing RL agents—all with bank-grade security.
+
+Key Features:
+• Real-time portfolio PnL and allocation
+• Live market intelligence across crypto, forex, and indices
+• AI Strategy Studio: Create trading bots with plain English
+• RL Optimizer: Watch your strategies evolve autonomously
+• Emergency Kill Switch with slide-to-confirm
+• Biometric authentication (Face ID / Touch ID)
+• Push notifications for critical alerts
+
+Built for professional traders, quant funds, and serious investors.Institutional-grade distributed trading platform scaffold with microservices, Kafka event streaming, RL agents, research lab, and Kubernetes deployment.
 
 ## Architecture
 - **Microservices:** market-data, feature-engine, strategy-engine, rl-agent-cluster, execution-router, risk-engine, portfolio-service, backtesting-cluster.
