@@ -1,4 +1,4 @@
-# ΩMEGA PRIME Δ PRO
+# ΩMEGA PRIME Δ 
 
 ΩMEGA PRIME Δ is the institutional-grade autonomous trading platform for mobile. 
 Monitor your portfolio in real time, deploy AI-generated strategies from natural 
