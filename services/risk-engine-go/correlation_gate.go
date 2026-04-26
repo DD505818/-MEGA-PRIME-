@@ -71,3 +71,29 @@ func (m *StreamingCorrelationMatrix) EvaluateAdd(candidateSymbol string, positio
 
 	return CorrelationDecision{Allowed: true, Reason: "CORRELATION_WITHIN_LIMIT", AverageCorrelation: avg, PositionCount: len(positions)}
 }
+
+// DecodeCorrelationPositions accepts the JSON-unmarshaled signal field
+// `correlation_positions`, expected as an array of objects:
+// [{"symbol":"BTCUSD", "correlation":0.42}].
+// Malformed entries are skipped instead of crashing the risk engine.
+func DecodeCorrelationPositions(raw interface{}) []CorrelationPosition {
+	items, ok := raw.([]interface{})
+	if !ok {
+		return nil
+	}
+
+	positions := make([]CorrelationPosition, 0, len(items))
+	for _, item := range items {
+		entry, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		symbol, _ := entry["symbol"].(string)
+		correlation, ok := entry["correlation"].(float64)
+		if strings.TrimSpace(symbol) == "" || !ok {
+			continue
+		}
+		positions = append(positions, CorrelationPosition{Symbol: symbol, Correlation: correlation})
+	}
+	return positions
+}
