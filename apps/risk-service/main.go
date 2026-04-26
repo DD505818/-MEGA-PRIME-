@@ -17,6 +17,7 @@ func validateHandler(w http.ResponseWriter, r *http.Request) {
     var sig map[string]interface{}
     json.NewDecoder(r.Body).Decode(&sig)
     ok, reason, qty := engine.validate(sig)
+    json.NewEncoder(w).Encode(map[string]interface{}{"approved": ok, "reason": reason, "quantity": qty})
     json.NewEncoder(w).Encode(map[string]interface{}{"approved": ok, "reason": reason, "quantity": qty, "trace_id": uuid.NewString()})
 }
 func killHandler(w http.ResponseWriter, r *http.Request) {
@@ -28,6 +29,10 @@ func killHandler(w http.ResponseWriter, r *http.Request) {
 }
 func resetHandler(w http.ResponseWriter, r *http.Request) {
     engine.killSwitch.Store(false)
+    w.WriteHeader(200)
+}
+func statusHandler(w http.ResponseWriter, r *http.Request) {
+    json.NewEncoder(w).Encode(map[string]interface{}{"killed": engine.killSwitch.Load(), "circuit": engine.circuitBreak.Load()})
     engine.redis.Del(context.Background(), "circuit_breaker:tripped")
     w.WriteHeader(200)
 }

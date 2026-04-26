@@ -46,15 +46,11 @@ func (r *RiskEngine) validate(signal map[string]interface{}) (bool, string, floa
         r.activateKillSwitch("MAX_DRAWDOWN_BREACH")
         return false, "MAX_DRAWDOWN_EXCEEDED", 0
     }
-    price := signal["limit_price"].(float64)
-    if price <= 0 {
-        return false, "INVALID_PRICE", 0
-    }
-    qty := signal["quantity"].(float64)
+    price, _ := signal["limit_price"].(float64)
+    if price <= 0 { return false, "INVALID_PRICE", 0 }
+    qty, _ := signal["quantity"].(float64)
     maxQty := (equity * 0.005) / (price * 0.02)
-    if qty > maxQty {
-        qty = maxQty
-    }
+    if qty > maxQty { qty = maxQty }
     return true, "APPROVED", qty
 }
 
