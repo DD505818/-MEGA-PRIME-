@@ -1,0 +1,12 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background: hsl(222 47% 8%);
+  color: hsl(210 40% 96%);
+}
+
+.panel {
+  @apply rounded-lg border border-white/10 bg-white/5 p-4;
+}
