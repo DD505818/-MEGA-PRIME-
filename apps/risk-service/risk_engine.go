@@ -2,6 +2,7 @@ package main
 
 import (
     "context"
+    "encoding/json"
     "strings"
     "sync/atomic"
 
@@ -27,8 +28,12 @@ func NewRiskEngine(redisAddr, brokers string) *RiskEngine {
 }
 
 func (r *RiskEngine) validate(signal map[string]interface{}) (bool, string, float64) {
-    if r.killSwitch.Load() { return false, "KILL_SWITCH_ACTIVE", 0 }
-    if r.circuitBreak.Load() { return false, "CIRCUIT_BREAKER_ACTIVE", 0 }
+    if r.killSwitch.Load() {
+        return false, "KILL_SWITCH_ACTIVE", 0
+    }
+    if r.circuitBreak.Load() {
+        return false, "CIRCUIT_BREAKER_ACTIVE", 0
+    }
     ctx := context.Background()
     equity, _ := r.redis.Get(ctx, "portfolio:equity").Float64()
     dailyPnL, _ := r.redis.Get(ctx, "portfolio:daily_pnl").Float64()
@@ -41,16 +46,23 @@ func (r *RiskEngine) validate(signal map[string]interface{}) (bool, string, floa
         r.activateKillSwitch("MAX_DRAWDOWN_BREACH")
         return false, "MAX_DRAWDOWN_EXCEEDED", 0
     }
-    price, _ := signal["limit_price"].(float64)
-    if price <= 0 { return false, "INVALID_PRICE", 0 }
-    qty, _ := signal["quantity"].(float64)
+    price := signal["limit_price"].(float64)
+    if price <= 0 {
+        return false, "INVALID_PRICE", 0
+    }
+    qty := signal["quantity"].(float64)
     maxQty := (equity * 0.005) / (price * 0.02)
-    if qty > maxQty { qty = maxQty }
+    if qty > maxQty {
+        qty = maxQty
+    }
     return true, "APPROVED", qty
 }
 
 func (r *RiskEngine) activateKillSwitch(reason string) {
     r.killSwitch.Store(true)
+    topic := "emergency.halt"
+    haltMsg, _ := json.Marshal(map[string]string{"reason": reason})
+    _ = r.producer.Produce(&kafka.Message{TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny}, Value: haltMsg}, nil)
 }
 
 func (r *RiskEngine) run() {}
