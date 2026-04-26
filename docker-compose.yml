@@ -25,6 +25,20 @@ services:
     depends_on: [zookeeper]
     restart: unless-stopped
 
+  # ── Core Infrastructure State ───────────────────────────────────────
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: omega
+      POSTGRES_USER: postgres
+      POSTGRES_DB: omega
+    restart: unless-stopped
+
   # ── Core Microservices (8) ──────────────────────────────────────────
   market-data-service:
     build: ./services/market-data-service
@@ -51,9 +65,11 @@ services:
     restart: unless-stopped
 
   risk-engine:
-    build: ./services/risk-engine
-    depends_on: [kafka]
-    environment: {KAFKA_BOOTSTRAP: kafka:9092}
+    build: ./services/risk-engine-go
+    depends_on: [kafka, redis]
+    environment:
+      KAFKA_BROKERS: kafka:9092
+      REDIS_URL: redis://redis:6379
     restart: unless-stopped
 
   portfolio-service:
@@ -69,11 +85,20 @@ services:
     restart: unless-stopped
 
   execution-router:
-    build: ./services/execution-router
-    depends_on: [kafka, zk-proof-service]
+    build: ./services/execution-router-go
+    depends_on: [kafka, redis, zk-proof-service]
     environment:
-      KAFKA_BOOTSTRAP: kafka:9092
+      KAFKA_BROKERS: kafka:9092
+      REDIS_URL: redis://redis:6379
       ZK_PROOF_URL: http://zk-proof-service:8000
+    restart: unless-stopped
+
+  truth-core:
+    build: ./services/truth-core
+    depends_on: [kafka, postgres]
+    environment:
+      KAFKA_BROKERS: kafka:9092
+      POSTGRES_DSN: postgresql://postgres:omega@postgres:5432/omega
     restart: unless-stopped
 
   # ── ZK-Proof Risk Verification ──────────────────────────────────────

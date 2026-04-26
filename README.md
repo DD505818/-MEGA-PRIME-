@@ -13,7 +13,7 @@ Key Features:
 • Biometric authentication (Face ID / Touch ID)
 • Push notifications for critical alerts
 
-Built for professional traders, quant funds, and serious investors.Institutional-grade distributed trading platform scaffold with microservices, Kafka event streaming, RL agents, research lab, and Kubernetes deployment.
+Built for professional traders, quant funds, and serious investors.Autonomous trading platform under active development; risk-authoritative execution engine with microservices, Kafka event streaming, RL agents, research lab, and Kubernetes deployment.
 
 ## Architecture
 - **Microservices:** market-data, feature-engine, strategy-engine, rl-agent-cluster, execution-router, risk-engine, portfolio-service, backtesting-cluster.
