@@ -1,0 +1,5 @@
+aiokafka
+redis
+numpy
+pandas
+TA-Lib
