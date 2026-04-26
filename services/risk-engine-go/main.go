@@ -18,10 +18,6 @@ type StreamingCorrelationMatrix struct{}
 
 func NewStreamingCorrelationMatrix(_ int, _ float64) *StreamingCorrelationMatrix { return &StreamingCorrelationMatrix{} }
 
-type VolatilityScaler struct{}
-
-func NewVolatilityScaler() *VolatilityScaler { return &VolatilityScaler{} }
-
 type RiskEngine struct {
 	redis        *redis.Client
 	consumer     *kafka.Consumer
@@ -82,10 +78,27 @@ func (r *RiskEngine) validate(signal map[string]interface{}) (bool, string, floa
 	if !ok || qty <= 0 {
 		return false, "INVALID_QUANTITY", 0
 	}
-	maxQty := (equity * 0.005) / (price * 0.02)
+
+	ewmaVol, _ := r.redis.Get(ctx, "risk:ewma_volatility").Float64()
+	shortVol, _ := r.redis.Get(ctx, "risk:short_term_volatility").Float64()
+	leverage := r.volScaler.Compute(LeverageInput{
+		Equity:              equity,
+		PeakEquity:          peakEquity,
+		EWMAVolatility:      ewmaVol,
+		ShortTermVolatility: shortVol,
+	})
+
+	// Base cap remains the hard 0.5% per-trade risk envelope. Dynamic leverage can
+	// expand the allowed quantity only inside existing daily loss, drawdown, and kill guards.
+	maxQty := ((equity * 0.005) / (price * 0.02)) * leverage.Multiplier
+	if maxQty <= 0 {
+		return false, "INVALID_RISK_CAP", 0
+	}
 	if qty > maxQty {
 		qty = maxQty
 	}
+	signal["risk_leverage_multiplier"] = leverage.Multiplier
+	signal["risk_leverage_reason"] = leverage.Reason
 	return true, "APPROVED", qty
 }
 
