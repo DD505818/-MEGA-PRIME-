@@ -1,10 +1,13 @@
 package main
 
 import (
+    "context"
     "encoding/json"
     "net/http"
     "os"
     "os/signal"
+
+    "github.com/google/uuid"
 )
 
 var engine *RiskEngine
@@ -15,6 +18,7 @@ func validateHandler(w http.ResponseWriter, r *http.Request) {
     json.NewDecoder(r.Body).Decode(&sig)
     ok, reason, qty := engine.validate(sig)
     json.NewEncoder(w).Encode(map[string]interface{}{"approved": ok, "reason": reason, "quantity": qty})
+    json.NewEncoder(w).Encode(map[string]interface{}{"approved": ok, "reason": reason, "quantity": qty, "trace_id": uuid.NewString()})
 }
 func killHandler(w http.ResponseWriter, r *http.Request) {
     var req struct{ Reason string }
@@ -29,6 +33,14 @@ func resetHandler(w http.ResponseWriter, r *http.Request) {
 }
 func statusHandler(w http.ResponseWriter, r *http.Request) {
     json.NewEncoder(w).Encode(map[string]interface{}{"killed": engine.killSwitch.Load(), "circuit": engine.circuitBreak.Load()})
+    engine.redis.Del(context.Background(), "circuit_breaker:tripped")
+    w.WriteHeader(200)
+}
+func statusHandler(w http.ResponseWriter, r *http.Request) {
+    json.NewEncoder(w).Encode(map[string]interface{}{
+        "killed": engine.killSwitch.Load(),
+        "circuit": engine.circuitBreak.Load(),
+    })
 }
 
 func main() {

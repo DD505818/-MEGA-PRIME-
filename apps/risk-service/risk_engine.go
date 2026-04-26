@@ -28,8 +28,12 @@ func NewRiskEngine(redisAddr, brokers string) *RiskEngine {
 }
 
 func (r *RiskEngine) validate(signal map[string]interface{}) (bool, string, float64) {
-    if r.killSwitch.Load() { return false, "KILL_SWITCH_ACTIVE", 0 }
-    if r.circuitBreak.Load() { return false, "CIRCUIT_BREAKER_ACTIVE", 0 }
+    if r.killSwitch.Load() {
+        return false, "KILL_SWITCH_ACTIVE", 0
+    }
+    if r.circuitBreak.Load() {
+        return false, "CIRCUIT_BREAKER_ACTIVE", 0
+    }
     ctx := context.Background()
     equity, _ := r.redis.Get(ctx, "portfolio:equity").Float64()
     dailyPnL, _ := r.redis.Get(ctx, "portfolio:daily_pnl").Float64()
@@ -54,7 +58,7 @@ func (r *RiskEngine) activateKillSwitch(reason string) {
     r.killSwitch.Store(true)
     topic := "emergency.halt"
     haltMsg, _ := json.Marshal(map[string]string{"reason": reason})
-    r.producer.Produce(&kafka.Message{TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny}, Value: haltMsg}, nil)
+    _ = r.producer.Produce(&kafka.Message{TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny}, Value: haltMsg}, nil)
 }
 
 func (r *RiskEngine) run() {}
