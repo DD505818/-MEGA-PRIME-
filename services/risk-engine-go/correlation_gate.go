@@ -16,23 +16,9 @@ type CorrelationDecision struct {
 	PositionCount      int     `json:"position_count"`
 }
 
-// StreamingCorrelationMatrix is a conservative gate facade. A future streaming matrix can replace
-// the static candidate-position input while preserving this decision contract.
-type StreamingCorrelationMatrix struct {
-	MaxAverageCorrelation float64
-}
-
-func NewStreamingCorrelationMatrix(_ int, maxAverageCorrelation float64) *StreamingCorrelationMatrix {
-	if maxAverageCorrelation <= 0 || maxAverageCorrelation > 1 {
-		maxAverageCorrelation = 0.70
-	}
-	return &StreamingCorrelationMatrix{MaxAverageCorrelation: maxAverageCorrelation}
-}
-
 // EvaluateAdd checks whether adding a candidate would breach the average-correlation limit.
 // Safety behavior:
 // - zero existing positions is allowed
-// - one existing position is allowed unless the candidate correlation itself breaches the threshold
 // - invalid/missing symbol is rejected
 // - correlations are clamped to [0, 1] for conservative positive-correlation gating
 func (m *StreamingCorrelationMatrix) EvaluateAdd(candidateSymbol string, positions []CorrelationPosition) CorrelationDecision {
@@ -42,10 +28,6 @@ func (m *StreamingCorrelationMatrix) EvaluateAdd(candidateSymbol string, positio
 	}
 
 	threshold := 0.70
-	if m != nil && m.MaxAverageCorrelation > 0 && m.MaxAverageCorrelation <= 1 {
-		threshold = m.MaxAverageCorrelation
-	}
-
 	if len(positions) == 0 {
 		return CorrelationDecision{Allowed: true, Reason: "NO_EXISTING_POSITIONS", AverageCorrelation: 0, PositionCount: 0}
 	}
