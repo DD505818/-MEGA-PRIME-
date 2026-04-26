@@ -67,3 +67,20 @@ func TestCorrelationGateSameSymbolOnlyDoesNotFalseBlock(t *testing.T) {
 		t.Fatalf("expected SAME_SYMBOL_ONLY, got %s", decision.Reason)
 	}
 }
+
+func TestDecodeCorrelationPositionsSkipsMalformedEntries(t *testing.T) {
+	raw := []interface{}{
+		map[string]interface{}{"symbol": "BTCUSD", "correlation": 0.42},
+		map[string]interface{}{"symbol": "", "correlation": 0.99},
+		map[string]interface{}{"symbol": "ETHUSD", "correlation": "bad"},
+		"bad-entry",
+	}
+
+	positions := DecodeCorrelationPositions(raw)
+	if len(positions) != 1 {
+		t.Fatalf("expected one decoded position, got %d", len(positions))
+	}
+	if positions[0].Symbol != "BTCUSD" || positions[0].Correlation != 0.42 {
+		t.Fatalf("unexpected decoded position: %+v", positions[0])
+	}
+}
