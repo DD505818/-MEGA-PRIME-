@@ -1,0 +1,11 @@
+[package]
+name = "market-data-service"
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+rdkafka = { version = "0.36" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rand = "0.8"

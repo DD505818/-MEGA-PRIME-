@@ -1,233 +1,66 @@
-version: '3.9'
-
-x-agent-base: &agent-base
-  depends_on: [kafka]
-  environment:
-    KAFKA_BOOTSTRAP: kafka:9092
-  restart: unless-stopped
-
+version: '3.8'
 services:
-  # ── Infrastructure ──────────────────────────────────────────────────
   zookeeper:
-    image: bitnami/zookeeper:3.9
+    image: confluentinc/cp-zookeeper:latest
     environment:
-      - ALLOW_ANONYMOUS_LOGIN=yes
-    restart: unless-stopped
-
+      ZOOKEEPER_CLIENT_PORT: 2181
   kafka:
-    image: bitnami/kafka:3.7
-    environment:
-      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
-      - ALLOW_PLAINTEXT_LISTENER=yes
-      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092
-      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
-      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
+    image: confluentinc/cp-kafka:latest
     depends_on: [zookeeper]
-    restart: unless-stopped
-
-  # ── Core Infrastructure State ───────────────────────────────────────
-
+    ports: ["9092:9092"]
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+  nats:
+    image: nats:latest
+    command: ["-js"]
   redis:
     image: redis:7-alpine
-    restart: unless-stopped
-
   postgres:
-    image: postgres:16-alpine
+    image: timescale/timescaledb:latest-pg14
     environment:
       POSTGRES_PASSWORD: omega
-      POSTGRES_USER: postgres
-      POSTGRES_DB: omega
-    restart: unless-stopped
-
-  # ── Core Microservices (8) ──────────────────────────────────────────
-  market-data-service:
-    build: ./services/market-data-service
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/db-migrations/init.sql:/docker-entrypoint-initdb.d/init.sql
+  market-ingestion:
+    build: ./apps/market-data-service
     depends_on: [kafka]
-    environment: {KAFKA_BOOTSTRAP: kafka:9092}
-    restart: unless-stopped
-
   feature-engine:
-    build: ./services/feature-engine
-    depends_on: [kafka]
-    environment: {KAFKA_BOOTSTRAP: kafka:9092}
-    restart: unless-stopped
-
-  strategy-engine:
-    build: ./services/strategy-engine
-    depends_on: [kafka]
-    environment: {KAFKA_BOOTSTRAP: kafka:9092}
-    restart: unless-stopped
-
-  rl-agent-cluster:
-    build: ./services/rl-agent-cluster
-    depends_on: [kafka]
-    environment: {KAFKA_BOOTSTRAP: kafka:9092}
-    restart: unless-stopped
-
-  risk-engine:
-    build: ./services/risk-engine-go
+    build: ./apps/feature-engine
     depends_on: [kafka, redis]
-    environment:
-      KAFKA_BROKERS: kafka:9092
-      REDIS_URL: redis://redis:6379
-    restart: unless-stopped
-
+  strategy-engine:
+    build: ./apps/agent-service
+    depends_on: [kafka, redis, feature-engine]
+  risk-engine:
+    build: ./apps/risk-service
+    depends_on: [kafka, redis, postgres]
+  execution-engine:
+    build: ./apps/execution-service
+    depends_on: [kafka, redis, risk-engine]
+  capital-allocator:
+    build: ./apps/capital-allocator
+    depends_on: [kafka]
   portfolio-service:
-    build: ./services/portfolio-service
-    depends_on: [kafka]
-    environment: {KAFKA_BOOTSTRAP: kafka:9092}
-    restart: unless-stopped
-
-  backtesting-cluster:
-    build: ./services/backtesting-cluster
-    depends_on: [kafka]
-    environment: {KAFKA_BOOTSTRAP: kafka:9092}
-    restart: unless-stopped
-
-  execution-router:
-    build: ./services/execution-router-go
-    depends_on: [kafka, redis, zk-proof-service]
-    environment:
-      KAFKA_BROKERS: kafka:9092
-      REDIS_URL: redis://redis:6379
-      ZK_PROOF_URL: http://zk-proof-service:8000
-    restart: unless-stopped
-
+    build: ./apps/portfolio-service
+    depends_on: [postgres, kafka]
   truth-core:
-    build: ./services/truth-core
-    depends_on: [kafka, postgres]
-    environment:
-      KAFKA_BROKERS: kafka:9092
-      POSTGRES_DSN: postgresql://postgres:omega@postgres:5432/omega
-    restart: unless-stopped
-
-  # ── ZK-Proof Risk Verification ──────────────────────────────────────
-  zk-proof-service:
-    build: ./services/zk-proof-service
-    depends_on: [kafka]
-    ports: ["8081:8000"]
-    restart: unless-stopped
-
-  # ── API Gateway + WebSocket ─────────────────────────────────────────
-  gateway-api:
-    build: ./gateway-api
-    depends_on: [kafka]
-    ports: ["8080:8000"]
-    environment: {KAFKA_BOOTSTRAP: kafka:9092}
-    restart: unless-stopped
-
-  # ── 19 Agent Services ───────────────────────────────────────────────
-  agent-ceo:
-    build: ./services/agents/ceo
-    <<: *agent-base
-
-  agent-cfo:
-    build: ./services/agents/cfo
-    <<: *agent-base
-
-  agent-mamba:
-    build: ./services/agents/mamba
-    <<: *agent-base
-
-  agent-surge:
-    build: ./services/agents/surge
-    <<: *agent-base
-
-  agent-arb:
-    build: ./services/agents/arb
-    <<: *agent-base
-
-  agent-opt:
-    build: ./services/agents/opt
-    <<: *agent-base
-
-  agent-gold:
-    build: ./services/agents/gold
-    <<: *agent-base
-
-  agent-guard:
-    build: ./services/agents/guard
-    <<: *agent-base
-
-  agent-maker:
-    build: ./services/agents/maker
-    <<: *agent-base
-
-  agent-twin:
-    build: ./services/agents/twin
-    <<: *agent-base
-
-  agent-nexus:
-    build: ./services/agents/nexus
-    <<: *agent-base
-
-  agent-senti:
-    build: ./services/agents/senti
-    <<: *agent-base
-
-  agent-orbit:
-    build: ./services/agents/orbit
-    <<: *agent-base
-
-  agent-oracle:
-    build: ./services/agents/oracle
-    <<: *agent-base
-
-  agent-harvest:
-    build: ./services/agents/harvest
-    <<: *agent-base
-
-  agent-stake:
-    build: ./services/agents/stake
-    <<: *agent-base
-
-  agent-mev-hunter:
-    build: ./services/agents/mev-hunter
-    <<: *agent-base
-
-  agent-midas:
-    build: ./services/agents/midas
-    <<: *agent-base
-
-  agent-hi-darts:
-    build: ./services/agents/hi-darts
-    <<: *agent-base
-
-  # ── Frontend ────────────────────────────────────────────────────────
-  dashboard-react:
-    build: ./dashboard-react
-    ports: ["3000:80"]
-    depends_on: [gateway-api]
-    restart: unless-stopped
-
-  dashboard:
-    build: ./dashboard
-    ports: ["3004:3000"]
-    restart: unless-stopped
-
-  control-panel:
-    build: ./control-panel
+    build: ./apps/truth-core
+    depends_on: [postgres]
+  websocket-gateway:
+    build: ./apps/websocket-gateway
     ports: ["3001:3001"]
-    restart: unless-stopped
-
-  # ── Monitoring ──────────────────────────────────────────────────────
-  prometheus:
-    image: prom/prometheus:latest
-    volumes:
-      - ./infrastructure/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
-    ports: ["9090:9090"]
-    restart: unless-stopped
-
-  grafana:
-    image: grafana/grafana:latest
-    ports: ["3002:3000"]
+    depends_on: [kafka]
+  web-ui:
+    build: ./apps/web-ui
+    ports: ["3000:80"]
+    depends_on: [websocket-gateway]
+  llm-service:
+    build: ./apps/llm-service
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: omega_prime_2026
-    restart: unless-stopped
-
-  alertmanager:
-    image: prom/alertmanager:latest
-    volumes:
-      - ./infrastructure/monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml
-    ports: ["9093:9093"]
-    restart: unless-stopped
+      GROQ_API_KEY: ${GROQ_API_KEY}
+    depends_on: [redis]
+volumes:
+  pgdata:

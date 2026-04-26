@@ -1,0 +1,4 @@
+aiokafka
+redis
+numpy
+pandas
