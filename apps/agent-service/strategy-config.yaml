@@ -1,0 +1,139 @@
+# ΩMEGA PRIME Δ — Unified Strategy Configuration v17.0.0
+# Auto-loaded by orchestrator at startup.
+# All parameters validated by 14-gate AEGIS Governor.
+
+rev:
+  bb_period: 20
+  bb_std: 2.0
+  rsi_period: 14
+  rsi_oversold: 28
+  rsi_overbought: 72
+  ml_model_enabled: true
+  ml_confidence_threshold: 0.70
+  stop_multiplier: 1.5
+  take_profit: "middle_band"
+  max_risk_per_trade: 0.02
+  max_open_positions: 6
+  sharpe_target: 1.8
+  max_drawdown_target: 0.12
+
+maker:
+  spread_bps:
+    min: 5
+    max: 20
+  order_size_usd:
+    min: 10000
+    max: 50000
+  execution_latency_ms: 10
+  spread_widening_halt_bps: 100
+  inventory_halt_usd: 500000
+  probabilistic_spread_model: true
+  triton_inference: false  # enable when NVIDIA Triton deployed
+
+twin:
+  model: "xgboost_gradient_boosting"
+  features: 200
+  prediction_interval_minutes: 15
+  portfolio_size:
+    min: 10
+    max: 30
+  confidence_weighted_allocation: true
+  rebalance_frequency: "daily"
+  daily_loss_limit_pct: 0.01
+  no_overnight_positions: true
+  target_annual_return_pct:
+    min: 15
+    max: 25
+  max_drawdown_target_pct: 10
+  lookback: 50
+  entry_z: 2.0
+  exit_z: 0.5
+
+senti:
+  nlp_model: "finbert_sentiment"
+  sentiment_sources:
+    - "news"
+    - "social"
+  composite_score_weighting: "recency"
+  sentiment_threshold_long: 0.8
+  sentiment_threshold_short: -0.8
+  trade_duration_hours:
+    min: 1
+    max: 4
+  position_size_pct:
+    min: 0.5
+    max: 1.5
+  volatility_filter_active: true
+  target_win_rate: 0.55
+  target_profit_factor: 1.4
+  fear_threshold: 20
+  greed_threshold: 80
+
+opt:
+  iv_sigma_threshold: 3.0
+  iv_skew_arb_enabled: true
+  pricing_discrepancy_min_pct: 0.15
+  delta_hedge_immediate: true
+  profit_target_pct:
+    min: 0.5
+    max: 2.0
+  min_account_size: 100000
+  close_on_settlement: true
+  close_on_vol_normalize: true
+  max_trades_per_day: 2
+
+arb:
+  min_edge_bps: 8.0
+  max_inventory_usd: 50000
+  fee_bps: 3.0
+
+gold:
+  dxy_drop_threshold: -0.5
+  dxy_rise_threshold: 0.5
+  atr_stop_mult: 1.5
+
+surge:
+  channel_period: 20
+  breakout_atr_mult: 2.0
+  atr_expansion_min: 1.2
+  pyramid_trigger_r: 1.0
+  max_pyramids: 3
+
+box_theory:
+  atr_multiplier: 0.5
+  sweep_tolerance: 0.0005
+  body_wick_ratio: 0.5
+
+nexus:
+  quorum_count: 3
+  min_avg_confidence: 0.72
+  min_agents_available: 5
+
+gap:
+  min_gap_pct: 0.003
+  atr_period: 14
+
+harvest:
+  min_edge_bps: 150.0
+  max_risk_score: 0.45
+
+# Risk limits applied globally across all strategies
+risk_limits:
+  max_daily_loss_pct: 0.02
+  max_drawdown_pct: 0.10
+  max_open_positions: 8
+  max_notional_per_trade: 50000
+  max_leverage: 2.0
+  min_confidence: 0.60
+  stale_book_seconds: 5
+  max_spread_bps: 20
+  risk_per_trade_pct: 0.005
+
+# Kelly compounding parameters
+kelly:
+  base_fraction: 0.25
+  win_streak_boost: 0.30
+  drawdown_reduction: 0.15
+  max_fraction: 0.35
+  monthly_sharpe_boost_threshold: 2.5
+  monthly_sharpe_boost_pct: 0.05
