@@ -1,0 +1,125 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: execution-engine
+  namespace: omega-prime
+  labels:
+    app: execution-engine
+    tier: core
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: execution-engine
+  template:
+    metadata:
+      labels:
+        app: execution-engine
+        tier: core
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values: [execution-engine]
+            topologyKey: "kubernetes.io/hostname"
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+      - name: execution-engine
+        image: omega-prime/execution-engine:v17.0.0
+        ports:
+        - containerPort: 8081
+        env:
+        - name: KAFKA_BROKERS
+          valueFrom:
+            configMapKeyRef:
+              name: omega-config
+              key: kafka_brokers
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: omega-secrets
+              key: redis_url
+        - name: PAPER_MODE
+          valueFrom:
+            configMapKeyRef:
+              name: omega-config
+              key: paper_mode
+        # Broker credentials from secrets
+        - name: COINBASE_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: broker-secrets
+              key: coinbase_api_key
+              optional: true
+        - name: COINBASE_API_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: broker-secrets
+              key: coinbase_api_secret
+              optional: true
+        - name: KRAKEN_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: broker-secrets
+              key: kraken_api_key
+              optional: true
+        - name: KRAKEN_API_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: broker-secrets
+              key: kraken_api_secret
+              optional: true
+        - name: ALPACA_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: broker-secrets
+              key: alpaca_api_key
+              optional: true
+        - name: ALPACA_API_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: broker-secrets
+              key: alpaca_api_secret
+              optional: true
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "256Mi"
+          limits:
+            cpu: "1000m"
+            memory: "512Mi"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 30
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: execution-engine
+  namespace: omega-prime
+spec:
+  selector:
+    app: execution-engine
+  ports:
+  - port: 8081
+    targetPort: 8081
+  type: ClusterIP

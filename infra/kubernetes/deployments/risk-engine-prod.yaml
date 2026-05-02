@@ -1,0 +1,115 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: risk-engine
+  namespace: omega-prime
+  labels:
+    app: risk-engine
+    tier: core
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: risk-engine
+  template:
+    metadata:
+      labels:
+        app: risk-engine
+        tier: core
+    spec:
+      # ── Anti-affinity: spread replicas across nodes ──────────────────────
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values: [risk-engine]
+            topologyKey: "kubernetes.io/hostname"
+        podAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 50
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: kafka
+              topologyKey: "kubernetes.io/hostname"
+      # ── Security context ──────────────────────────────────────────────────
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 2000
+      containers:
+      - name: risk-engine
+        image: omega-prime/risk-engine:v17.0.0
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: KAFKA_BROKERS
+          valueFrom:
+            configMapKeyRef:
+              name: omega-config
+              key: kafka_brokers
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: omega-secrets
+              key: redis_url
+        - name: POSTGRES_DSN
+          valueFrom:
+            secretKeyRef:
+              name: omega-secrets
+              key: postgres_dsn
+        - name: PAPER_MODE
+          valueFrom:
+            configMapKeyRef:
+              name: omega-config
+              key: paper_mode
+        - name: MAX_DAILY_LOSS
+          value: "0.02"
+        - name: MAX_DRAWDOWN
+          value: "0.10"
+        - name: MAX_POSITIONS
+          value: "8"
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "256Mi"
+          limits:
+            cpu: "1000m"
+            memory: "512Mi"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 30
+          failureThreshold: 3
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: risk-engine
+  namespace: omega-prime
+spec:
+  selector:
+    app: risk-engine
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+  type: ClusterIP

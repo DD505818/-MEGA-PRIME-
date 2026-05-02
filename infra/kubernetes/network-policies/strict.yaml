@@ -1,0 +1,284 @@
+# Strict network isolation for ΩMEGA PRIME Δ services.
+# Default deny-all, then explicit allow rules per service.
+
+# ── Default deny all ingress and egress ──────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: omega-prime
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+---
+# ── Allow DNS egress for all pods ─────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: omega-prime
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  egress:
+  - ports:
+    - port: 53
+      protocol: UDP
+    - port: 53
+      protocol: TCP
+---
+# ── Risk Engine: accepts from strategy-engine, fusion-engine, web-ui ─────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: risk-engine-ingress
+  namespace: omega-prime
+spec:
+  podSelector:
+    matchLabels:
+      app: risk-engine
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: strategy-engine
+    - podSelector:
+        matchLabels:
+          app: fusion-engine
+    - podSelector:
+        matchLabels:
+          app: web-ui
+    - podSelector:
+        matchLabels:
+          app: websocket-gateway
+    ports:
+    - protocol: TCP
+      port: 8080
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: kafka
+    ports:
+    - protocol: TCP
+      port: 9092
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+  - to:
+    - podSelector:
+        matchLabels:
+          app: postgres
+    ports:
+    - protocol: TCP
+      port: 5432
+---
+# ── Execution Engine: accepts approved signals from risk-engine ───────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: execution-engine-ingress
+  namespace: omega-prime
+spec:
+  podSelector:
+    matchLabels:
+      app: execution-engine
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: risk-engine
+    - podSelector:
+        matchLabels:
+          app: web-ui
+    ports:
+    - protocol: TCP
+      port: 8081
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: kafka
+    ports:
+    - protocol: TCP
+      port: 9092
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+  # Allow egress to broker APIs (external HTTPS)
+  - ports:
+    - protocol: TCP
+      port: 443
+---
+# ── Strategy Engine: reads features, writes to signals.raw ───────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: strategy-engine-policy
+  namespace: omega-prime
+spec:
+  podSelector:
+    matchLabels:
+      app: strategy-engine
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: kafka
+    ports:
+    - protocol: TCP
+      port: 9092
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+---
+# ── Truth-Core: only accessible from portfolio-service and web-ui ─────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: truth-core-ingress
+  namespace: omega-prime
+spec:
+  podSelector:
+    matchLabels:
+      app: truth-core
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: portfolio-service
+    - podSelector:
+        matchLabels:
+          app: execution-engine
+    - podSelector:
+        matchLabels:
+          app: web-ui
+    ports:
+    - protocol: TCP
+      port: 8084
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: postgres
+    ports:
+    - protocol: TCP
+      port: 5432
+---
+# ── WebSocket Gateway: internet-facing ───────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: websocket-gateway-ingress
+  namespace: omega-prime
+spec:
+  podSelector:
+    matchLabels:
+      app: websocket-gateway
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Accept from ingress controller (external users via HTTPS/WSS)
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 3001
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: kafka
+    ports:
+    - protocol: TCP
+      port: 9092
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+---
+# ── Portfolio Service ─────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: portfolio-service-policy
+  namespace: omega-prime
+spec:
+  podSelector:
+    matchLabels:
+      app: portfolio-service
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: web-ui
+    - podSelector:
+        matchLabels:
+          app: websocket-gateway
+    ports:
+    - protocol: TCP
+      port: 8083
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: kafka
+    ports:
+    - protocol: TCP
+      port: 9092
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+  - to:
+    - podSelector:
+        matchLabels:
+          app: postgres
+    ports:
+    - protocol: TCP
+      port: 5432
+  - to:
+    - podSelector:
+        matchLabels:
+          app: truth-core
+    ports:
+    - protocol: TCP
+      port: 8084
