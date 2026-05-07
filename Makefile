@@ -18,11 +18,11 @@ verify:
 
 test:
 	@echo "--- Python agent tests ---"
-	cd apps/agent-service && python -m pytest ../../tests/ -v --tb=short 2>/dev/null || true
+	cd apps/agent-service && python -m pytest ../../tests/ -v --tb=short
 	@echo "--- Go risk-service tests ---"
-	cd apps/risk-service && go test ./... -v 2>/dev/null || true
+	cd apps/risk-service && go test ./... -v
 	@echo "--- TypeScript type check ---"
-	cd apps/web-ui && npx tsc --noEmit 2>/dev/null || true
+	cd apps/web-ui && npx tsc --noEmit
 	@echo "--- System verification ---"
 	bash scripts/verify_10_of_10.sh
 
