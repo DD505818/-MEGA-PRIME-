@@ -11,18 +11,20 @@ import { AnalyticsView }   from './pages/AnalyticsView'
 import { AgentsView }      from './pages/AgentsView'
 import { DeFiView }        from './pages/DeFiView'
 import { ComplianceView }  from './pages/ComplianceView'
-import { SettingsView }    from './pages/SettingsView'
+import { SettingsView }      from './pages/SettingsView'
+import { AIStrategistView } from './pages/AIStrategistView'
 import clsx from 'clsx'
 
 const TABS = [
-  { path: '/market',     label: 'Market' },
-  { path: '/execution',  label: 'Execution' },
-  { path: '/portfolio',  label: 'Portfolio' },
-  { path: '/analytics',  label: 'Analytics' },
-  { path: '/agents',     label: 'Agents' },
-  { path: '/defi',       label: 'DeFi' },
-  { path: '/compliance', label: 'Compliance' },
-  { path: '/settings',   label: 'Settings' },
+  { path: '/market',        label: 'Market' },
+  { path: '/execution',     label: 'Execution' },
+  { path: '/portfolio',     label: 'Portfolio' },
+  { path: '/analytics',     label: 'Analytics' },
+  { path: '/agents',        label: 'Agents' },
+  { path: '/defi',          label: 'DeFi' },
+  { path: '/ai-strategist', label: 'AI Strategist' },
+  { path: '/compliance',    label: 'Compliance' },
+  { path: '/settings',      label: 'Settings' },
 ]
 
 function TabBar() {
@@ -53,9 +55,10 @@ function DashboardLayout() {
           <Route path="/execution"  element={<ExecutionView />} />
           <Route path="/portfolio"  element={<PortfolioView />} />
           <Route path="/analytics"  element={<AnalyticsView />} />
-          <Route path="/agents"     element={<AgentsView />} />
-          <Route path="/defi"       element={<DeFiView />} />
-          <Route path="/compliance" element={<ComplianceView />} />
+          <Route path="/agents"        element={<AgentsView />} />
+          <Route path="/defi"          element={<DeFiView />} />
+          <Route path="/ai-strategist" element={<AIStrategistView />} />
+          <Route path="/compliance"    element={<ComplianceView />} />
           <Route path="/settings"   element={<SettingsView />} />
         </Routes>
       </main>

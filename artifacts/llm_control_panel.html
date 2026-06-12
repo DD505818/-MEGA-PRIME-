@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ΩMEGA PRIME — LLM Control Panel</title>
+<style>
+  :root {
+    --bg: #0a0a0f; --panel: #12121a; --panel2: #1a1a28; --border: #2a2a3d;
+    --text: #e8e8f0; --muted: #6b6b8a; --gold: #ffd700;
+    --blue: #3b82f6; --green: #00d084; --red: #ff4757; --yellow: #fbbf24;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; min-height: 100vh; padding: 0; }
+
+  .topbar {
+    display: flex; align-items: center; gap: 12px; padding: 10px 20px;
+    border-bottom: 1px solid var(--border); background: var(--panel);
+  }
+  .omega { font-size: 20px; color: var(--gold); font-weight: 900; }
+  .topbar-title { font-size: 10px; font-weight: 700; color: var(--gold); letter-spacing: 4px; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); margin-left: auto; animation: pulse 2s infinite; }
+  .status-dot.dead { background: var(--red); animation: none; }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 20px; max-width: 900px; margin: 0 auto; }
+  @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
+
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .card-title { font-size: 9px; font-weight: 800; letter-spacing: 3px; color: var(--muted); margin-bottom: 14px; text-transform: uppercase; }
+
+  /* Kill switch card */
+  .kill-card { grid-column: 1 / -1; }
+  .kill-status-row { display: flex; align-items: center; justify-content: space-between; }
+  .kill-label { font-size: 13px; font-weight: 700; }
+  .kill-label.armed { color: var(--green); }
+  .kill-label.active { color: var(--red); }
+  .kill-desc { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .kill-btn {
+    padding: 10px 24px; border-radius: 8px; font-size: 12px; font-weight: 800;
+    letter-spacing: 2px; cursor: pointer; transition: all 0.15s; border: none;
+  }
+  .kill-btn.arm {
+    background: rgba(255,71,87,0.15); border: 2px solid rgba(255,71,87,0.5);
+    color: var(--red);
+  }
+  .kill-btn.arm:hover { background: rgba(255,71,87,0.3); }
+  .kill-btn.reset {
+    background: rgba(0,208,132,0.15); border: 2px solid rgba(0,208,132,0.5);
+    color: var(--green);
+  }
+  .kill-btn.reset:hover { background: rgba(0,208,132,0.3); }
+  .kill-includes {
+    margin-top: 10px; padding: 8px 12px; background: var(--panel2);
+    border: 1px solid var(--border); border-radius: 6px;
+  }
+  .kill-item { font-size: 11px; color: var(--muted); padding: 2px 0; }
+  .kill-item::before { content: "⬛ "; color: var(--red); }
+  .kill-item.green::before { color: var(--green); content: "✓ "; }
+
+  /* Spend card */
+  .metric-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); }
+  .metric-row:last-child { border-bottom: none; }
+  .metric-key { font-size: 11px; color: var(--muted); }
+  .metric-val { font-size: 13px; font-family: monospace; font-weight: 600; }
+
+  .big-num { font-size: 28px; font-weight: 900; font-family: monospace; color: var(--green); }
+  .big-label { font-size: 10px; color: var(--muted); margin-top: 2px; }
+  .cap-bar { height: 8px; background: var(--panel2); border-radius: 4px; overflow: hidden; margin-top: 10px; }
+  .cap-fill { height: 100%; border-radius: 4px; transition: width 1s ease; }
+  .cap-legend { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); margin-top: 4px; }
+
+  /* Model config card */
+  .config-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .config-key { font-size: 11px; color: var(--muted); }
+  .config-val { font-size: 11px; font-family: monospace; color: var(--blue); }
+  .config-val.redacted { color: var(--muted); font-style: italic; }
+
+  /* Audit log card */
+  .audit-card { grid-column: 1 / -1; }
+  .audit-table { width: 100%; border-collapse: collapse; font-size: 11px; font-family: monospace; }
+  .audit-table th { text-align: left; color: var(--muted); padding: 4px 8px; border-bottom: 1px solid var(--border); font-size: 9px; letter-spacing: 2px; }
+  .audit-table td { padding: 6px 8px; border-bottom: 1px solid rgba(42,42,61,0.5); }
+  .audit-table tr:hover td { background: rgba(26,26,40,0.5); }
+  .hash { color: var(--muted); font-size: 9px; }
+  .event-badge { padding: 2px 6px; border-radius: 3px; font-size: 9px; font-weight: 700; letter-spacing: 1px; }
+  .ev-chat { background: rgba(59,130,246,0.15); color: var(--blue); }
+  .ev-blocked { background: rgba(255,71,87,0.15); color: var(--red); }
+
+  .tag-green { color: var(--green); }
+  .tag-red { color: var(--red); }
+  .tag-muted { color: var(--muted); }
+
+  /* Cap slider */
+  .slider-row { margin-top: 12px; }
+  .slider-label { font-size: 11px; color: var(--muted); margin-bottom: 6px; display: flex; justify-content: space-between; }
+  input[type=range] { width: 100%; accent-color: var(--blue); }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="omega">Ω</div>
+  <div class="topbar-title">LLM Control Panel</div>
+  <div id="statusDot" class="status-dot" title="Kimi K2 service online"></div>
+</div>
+
+<div class="grid">
+
+  <!-- Kill Switch -->
+  <div class="card kill-card">
+    <div class="card-title">Kill Switch — LLM + Trading</div>
+    <div class="kill-status-row">
+      <div>
+        <div class="kill-label armed" id="killLabel">ARMED — ALL SYSTEMS OPERATIONAL</div>
+        <div class="kill-desc" id="killDesc">Kill switch will instantly halt trading agents and block all LLM calls.</div>
+      </div>
+      <button class="kill-btn arm" id="killBtn" onclick="toggleKill()">ACTIVATE KILL SWITCH</button>
+    </div>
+    <div class="kill-includes">
+      <div class="kill-item" id="ki1">Trading agents (all 20 active agents paused)</div>
+      <div class="kill-item" id="ki2">New order placement blocked</div>
+      <div class="kill-item" id="ki3">LLM calls (Kimi K2 API) blocked</div>
+      <div class="kill-item" id="ki4">Daily spend cap enforced at $0.00</div>
+    </div>
+  </div>
+
+  <!-- Daily Spend -->
+  <div class="card">
+    <div class="card-title">Daily LLM Spend</div>
+    <div class="big-num" id="spendNum">$0.0012</div>
+    <div class="big-label">today's Kimi K2 spend</div>
+    <div class="cap-bar">
+      <div class="cap-fill" id="capFill" style="width:0.024%;background:var(--green)"></div>
+    </div>
+    <div class="cap-legend">
+      <span>$0.00</span>
+      <span id="capLabel">cap: $5.00/day</span>
+    </div>
+    <div class="slider-row">
+      <div class="slider-label">
+        <span>Daily cap</span>
+        <span id="sliderVal" style="color:var(--blue)">$5.00</span>
+      </div>
+      <input type="range" min="1" max="50" value="5" step="0.5" id="capSlider" oninput="updateCap(this.value)" />
+    </div>
+    <div style="margin-top:14px">
+      <div class="metric-row"><span class="metric-key">Tokens today (input)</span><span class="metric-val">2,847</span></div>
+      <div class="metric-row"><span class="metric-key">Tokens today (output)</span><span class="metric-val">18,421</span></div>
+      <div class="metric-row"><span class="metric-key">Requests today</span><span class="metric-val">14</span></div>
+      <div class="metric-row"><span class="metric-key">Avg latency (p50)</span><span class="metric-val tag-green">1.2s</span></div>
+      <div class="metric-row"><span class="metric-key">Avg latency (p95)</span><span class="metric-val">3.4s</span></div>
+      <div class="metric-row"><span class="metric-key">Blocked (spend cap)</span><span class="metric-val tag-muted">0</span></div>
+      <div class="metric-row"><span class="metric-key">Blocked (kill switch)</span><span class="metric-val tag-muted">0</span></div>
+    </div>
+  </div>
+
+  <!-- Model Config -->
+  <div class="card">
+    <div class="card-title">Model Configuration</div>
+    <div class="config-row"><div class="config-key">Provider</div><div class="config-val">Moonshot AI</div></div>
+    <div class="config-row"><div class="config-key">Model</div><div class="config-val">kimi-k2-0711-preview</div></div>
+    <div class="config-row"><div class="config-key">API Key</div><div class="config-val redacted">sk-••••••••••••••••••••••</div></div>
+    <div class="config-row"><div class="config-key">Key source</div><div class="config-val tag-green">environment variable</div></div>
+    <div class="config-row"><div class="config-key">Key in source code</div><div class="config-val tag-green">never</div></div>
+    <div class="config-row"><div class="config-key">Key in logs</div><div class="config-val tag-green">redacted always</div></div>
+    <div class="config-row"><div class="config-key">Max tokens / req</div><div class="config-val">1,024</div></div>
+    <div class="config-row"><div class="config-key">Temperature</div><div class="config-val">0.4</div></div>
+    <div class="config-row"><div class="config-key">Timeout</div><div class="config-val">28s (connect: 5s)</div></div>
+    <div class="config-row"><div class="config-key">Retries</div><div class="config-val">2 × 1s back-off</div></div>
+    <div class="config-row"><div class="config-key">System prompt</div><div class="config-val tag-green">hardcoded (immutable)</div></div>
+    <div class="config-row"><div class="config-key">Buy/sell signals</div><div class="config-val tag-red">refused by system prompt</div></div>
+    <div class="config-row"><div class="config-key">Certainty claims</div><div class="config-val tag-red">refused by system prompt</div></div>
+  </div>
+
+  <!-- Audit Log -->
+  <div class="card audit-card">
+    <div class="card-title">Hash-Chained Audit Log (last 6 entries)</div>
+    <table class="audit-table">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Event</th>
+          <th>User</th>
+          <th>Tokens (in/out)</th>
+          <th>Cost</th>
+          <th>Prev Hash → Hash</th>
+        </tr>
+      </thead>
+      <tbody id="auditBody">
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<script>
+// Simulate state
+let killActive = false;
+let cap = 5.0;
+const spend = 0.0012;
+
+// Build audit log rows
+const auditData = [
+  { time: '14:32:07', event: 'llm_chat', user: 'operator', in: 312, out: 847, cost: '$0.0003', prev: 'a7f3e2d1', hash: 'c9b4f1a8' },
+  { time: '14:28:44', event: 'llm_chat', user: 'operator', in: 198, out: 612, cost: '$0.0002', prev: '5d8e1f3c', hash: 'a7f3e2d1' },
+  { time: '14:21:19', event: 'llm_chat', user: 'operator', in: 445, out: 1021, cost: '$0.0004', prev: '2b6a9c4e', hash: '5d8e1f3c' },
+  { time: '13:55:33', event: 'llm_chat', user: 'operator', in: 287, out: 734, cost: '$0.0003', prev: 'f1d7e2a9', hash: '2b6a9c4e' },
+  { time: '13:41:08', event: 'BLOCKED', user: 'operator', in: 0, out: 0, cost: '$0.0000', prev: '8c3f7d1b', hash: 'f1d7e2a9', blocked: true },
+  { time: '09:00:00', event: 'llm_chat', user: 'operator', in: 156, out: 439, cost: '$0.0000', prev: 'genesis', hash: '8c3f7d1b' },
+];
+
+const tbody = document.getElementById('auditBody');
+auditData.forEach(row => {
+  const tr = document.createElement('tr');
+  const evClass = row.blocked ? 'ev-blocked' : 'ev-chat';
+  const evLabel = row.blocked ? 'BLOCKED' : 'llm_chat';
+  tr.innerHTML = `
+    <td>${row.time}</td>
+    <td><span class="event-badge ${evClass}">${evLabel}</span></td>
+    <td>${row.user}</td>
+    <td>${row.in.toLocaleString()} / ${row.out.toLocaleString()}</td>
+    <td style="color:var(--${row.blocked ? 'muted' : 'green'})">${row.cost}</td>
+    <td class="hash">${row.prev.slice(0,8)}… → ${row.hash}…</td>
+  `;
+  tbody.appendChild(tr);
+});
+
+// Animate spend bar
+setTimeout(() => {
+  const pct = (spend / cap) * 100;
+  document.getElementById('capFill').style.width = pct + '%';
+}, 300);
+
+// Kill switch
+function toggleKill() {
+  killActive = !killActive;
+  const label = document.getElementById('killLabel');
+  const desc = document.getElementById('killDesc');
+  const btn = document.getElementById('killBtn');
+  const dot = document.getElementById('statusDot');
+  const items = ['ki1','ki2','ki3','ki4'];
+
+  if (killActive) {
+    label.textContent = 'KILL SWITCH ACTIVE — ALL SYSTEMS HALTED';
+    label.className = 'kill-label active';
+    desc.textContent = 'All trading agents paused. LLM calls blocked. Tap Reset to restore.';
+    btn.textContent = 'RESET KILL SWITCH';
+    btn.className = 'kill-btn reset';
+    dot.className = 'status-dot dead';
+    items.forEach(id => document.getElementById(id).classList.add('green'));
+  } else {
+    label.textContent = 'ARMED — ALL SYSTEMS OPERATIONAL';
+    label.className = 'kill-label armed';
+    desc.textContent = 'Kill switch will instantly halt trading agents and block all LLM calls.';
+    btn.textContent = 'ACTIVATE KILL SWITCH';
+    btn.className = 'kill-btn arm';
+    dot.className = 'status-dot';
+    items.forEach(id => document.getElementById(id).classList.remove('green'));
+  }
+}
+
+function updateCap(val) {
+  cap = parseFloat(val);
+  document.getElementById('sliderVal').textContent = `$${cap.toFixed(2)}`;
+  document.getElementById('capLabel').textContent = `cap: $${cap.toFixed(2)}/day`;
+  const pct = Math.min(100, (spend / cap) * 100);
+  const fill = document.getElementById('capFill');
+  fill.style.width = pct + '%';
+  fill.style.background = pct > 80 ? 'var(--red)' : pct > 50 ? 'var(--yellow)' : 'var(--green)';
+}
+</script>
+</body>
+</html>

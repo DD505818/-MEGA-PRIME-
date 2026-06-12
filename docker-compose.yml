@@ -197,7 +197,7 @@ services:
       - "8084:8084"
     restart: unless-stopped
 
-  # ── LLM Service ──────────────────────────────────────────────────────────────
+  # ── LLM Service (Groq narration + Kimi K2 AI Strategist) ────────────────────
   llm-service:
     build: ./apps/llm-service
     depends_on:
@@ -209,6 +209,13 @@ services:
       KAFKA_BROKERS: kafka:9092
       REDIS_URL: redis://redis:6379
       GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
+      KIMI_API_KEY: ${KIMI_API_KEY:-}
+      KIMI_BASE_URL: ${KIMI_BASE_URL:-https://api.moonshot.cn/v1}
+      KIMI_MODEL: ${KIMI_MODEL:-kimi-k2-0711-preview}
+      LLM_DAILY_SPEND_CAP_USD: ${LLM_DAILY_SPEND_CAP_USD:-5.0}
+    ports:
+      - "8086:8086"
     restart: unless-stopped
 
   # ── WebSocket Gateway ────────────────────────────────────────────────────────

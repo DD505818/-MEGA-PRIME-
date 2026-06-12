@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ΩMEGA PRIME — Explain This Trade</title>
+<style>
+  :root {
+    --bg: #0a0a0f; --panel: #12121a; --panel2: #1a1a28; --border: #2a2a3d;
+    --text: #e8e8f0; --muted: #6b6b8a; --gold: #ffd700;
+    --blue: #3b82f6; --green: #00d084; --red: #ff4757;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; min-height: 100vh; display: flex; flex-direction: column; }
+
+  .topbar {
+    display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+    border-bottom: 1px solid var(--border); background: var(--panel);
+  }
+  .omega { font-size: 18px; color: var(--gold); font-weight: 900; }
+  .topbar-title { font-size: 10px; font-weight: 700; color: var(--gold); letter-spacing: 3px; }
+  .nav-back {
+    margin-left: auto; font-size: 11px; color: var(--blue); cursor: pointer;
+    border: 1px solid rgba(59,130,246,0.3); border-radius: 5px; padding: 4px 10px;
+  }
+  .nav-back:hover { background: rgba(59,130,246,0.1); }
+
+  .main { display: flex; gap: 0; flex: 1; overflow: hidden; }
+
+  /* Trade detail panel */
+  .trade-panel {
+    width: 340px; border-right: 1px solid var(--border); padding: 16px;
+    overflow-y: auto; flex-shrink: 0;
+  }
+  .section-label { font-size: 9px; font-weight: 700; letter-spacing: 3px; color: var(--muted); text-transform: uppercase; margin-bottom: 10px; }
+  .trade-card { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom: 12px; }
+  .trade-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .trade-symbol { font-size: 18px; font-weight: 800; color: var(--text); }
+  .trade-side {
+    font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 5px; letter-spacing: 1px;
+  }
+  .side-buy { background: rgba(0,208,132,0.15); border: 1px solid rgba(0,208,132,0.3); color: var(--green); }
+  .side-sell { background: rgba(255,71,87,0.15); border: 1px solid rgba(255,71,87,0.3); color: var(--red); }
+
+  .trade-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+  .trade-row:last-child { border-bottom: none; }
+  .trade-key { color: var(--muted); }
+  .trade-val { font-family: monospace; font-weight: 600; }
+  .positive { color: var(--green); }
+  .negative { color: var(--red); }
+  .neutral { color: var(--blue); }
+
+  .aegis-badge {
+    display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px;
+    background: rgba(0,208,132,0.1); border: 1px solid rgba(0,208,132,0.25);
+    border-radius: 5px; font-size: 10px; color: var(--green); font-weight: 700; letter-spacing: 1px;
+  }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+
+  .explain-btn {
+    width: 100%; padding: 10px; background: rgba(59,130,246,0.2);
+    border: 1px solid rgba(59,130,246,0.4); border-radius: 8px;
+    color: var(--blue); font-size: 12px; font-weight: 700; cursor: pointer;
+    margin-top: 12px; letter-spacing: 1px; transition: background 0.15s;
+  }
+  .explain-btn:hover { background: rgba(59,130,246,0.35); }
+
+  /* Explanation panel */
+  .explanation-panel { flex: 1; padding: 16px; overflow-y: auto; display: flex; flex-direction: column; }
+  .exp-header { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+  .exp-title { font-size: 10px; font-weight: 700; color: var(--gold); letter-spacing: 3px; }
+  .model-badge { font-size: 9px; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; }
+
+  .disclaimer-inline {
+    padding: 8px 12px; background: rgba(251,191,36,0.07); border: 1px solid rgba(251,191,36,0.15);
+    border-radius: 6px; font-size: 10px; color: rgba(251,191,36,0.7); margin-bottom: 12px;
+    font-family: monospace;
+  }
+
+  .exp-content {
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 16px; font-size: 13px; line-height: 1.65; flex: 1;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .cursor { display: inline-block; width: 7px; height: 14px; background: var(--gold); opacity: 0.85; animation: blink 0.8s step-end infinite; vertical-align: text-bottom; margin-left: 1px; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .idle-state { color: var(--muted); font-size: 12px; padding: 20px 0; }
+
+  /* Deep-link URL builder */
+  .url-builder { margin-top: 12px; background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+  .url-label { font-size: 9px; color: var(--muted); letter-spacing: 2px; margin-bottom: 6px; }
+  .url-code { font-family: monospace; font-size: 10px; color: var(--blue); word-break: break-all; line-height: 1.4; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="omega">Ω</div>
+  <div class="topbar-title">Explain This Trade</div>
+  <div class="nav-back" onclick="window.history.back()">← Back to Dashboard</div>
+</div>
+
+<div class="main">
+
+  <!-- Left: trade detail -->
+  <div class="trade-panel">
+    <div class="section-label">Trade #4821</div>
+
+    <div class="trade-card">
+      <div class="trade-header">
+        <div class="trade-symbol">BTC/USDT</div>
+        <div class="trade-side side-buy">LONG</div>
+      </div>
+      <div class="trade-row"><span class="trade-key">Strategy</span><span class="trade-val neutral">SURGE</span></div>
+      <div class="trade-row"><span class="trade-key">Entry Price</span><span class="trade-val">$67,420.00</span></div>
+      <div class="trade-row"><span class="trade-key">Quantity</span><span class="trade-val">0.0284 BTC</span></div>
+      <div class="trade-row"><span class="trade-key">Notional</span><span class="trade-val">$1,914.73</span></div>
+      <div class="trade-row"><span class="trade-key">Kelly Fraction</span><span class="trade-val neutral">0.47×</span></div>
+      <div class="trade-row"><span class="trade-key">CRRP Boost</span><span class="trade-val positive">1.6×</span></div>
+      <div class="trade-row"><span class="trade-key">Stop Loss</span><span class="trade-val negative">$65,800.00</span></div>
+      <div class="trade-row"><span class="trade-key">Unrealized P&L</span><span class="trade-val positive">+$84.22</span></div>
+      <div class="trade-row"><span class="trade-key">Regime</span><span class="trade-val positive">BULL</span></div>
+      <div class="trade-row"><span class="trade-key">Confidence</span><span class="trade-val">0.78</span></div>
+    </div>
+
+    <div style="margin-bottom:10px">
+      <span class="aegis-badge"><span class="dot"></span>AEGIS 14/14 GATES PASSED</span>
+    </div>
+
+    <button class="explain-btn" onclick="explainTrade()">⚡ EXPLAIN THIS TRADE</button>
+
+    <div class="url-builder">
+      <div class="url-label">DEEP LINK (from trade table)</div>
+      <div class="url-code">/ai-strategist?trade={"symbol":"BTC/USDT","strategy":"SURGE","side":"BUY","confidence":0.78}</div>
+    </div>
+  </div>
+
+  <!-- Right: explanation -->
+  <div class="explanation-panel">
+    <div class="exp-header">
+      <div class="exp-title">AI STRATEGIST ANALYSIS</div>
+      <div class="model-badge">Kimi K2 · research only</div>
+    </div>
+
+    <div class="disclaimer-inline">
+      RESEARCH ONLY — The following analysis is informational. It does not constitute investment advice,
+      buy/sell signals, or performance guarantees.
+    </div>
+
+    <div class="exp-content" id="expContent">
+      <span class="idle-state">Click "Explain This Trade" to generate an AI analysis of this position.</span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const EXPLANATION = `**What SURGE detected:**
+The SURGE momentum strategy identified a triple-alignment signal on BTC/USDT at 08:42 UTC. All three confirmation layers triggered simultaneously:
+  • EMA9 (67,380) crossed above EMA21 (67,210) and EMA55 (66,940) — short-term momentum leading the medium and long-term trend
+  • RSI-14 at 61.4 — above the 50-level midpoint, confirming net-positive momentum over the lookback period
+  • MACD histogram at +124 — positive and expanding, indicating the rate of momentum change is accelerating
+
+**Why risk management approved it:**
+AEGIS evaluated all 14 gates and approved the position. Key factors: the portfolio is at 2.1% drawdown (well below the 5% defensive threshold), current portfolio heat is 34% of daily risk budget, and the 90-day correlation matrix shows no correlated BTC positions. The 15% CRRP reversal-probability boost was applied because a cycle-low pattern was detected on the 4H timeframe with p_reversal = 0.73.
+
+**What to watch:**
+The adaptive trailing stop is set at $65,800 — approximately 2.4% below entry — calibrated to 2× ATR-14. If BTC consolidates between $66,800–$67,500 for more than 4 hours without new highs, the SURGE agent will consider reducing position size. Monitor the EMA9/EMA21 spread: a cross-under would invalidate the signal.
+
+*Uncertainty note: This analysis reflects conditions at signal generation. Markets are dynamic and this does not predict future price action.*`;
+
+let streaming = false;
+
+function explainTrade() {
+  if (streaming) return;
+  streaming = true;
+  const content = document.getElementById('expContent');
+  content.innerHTML = '<span class="cursor"></span>';
+
+  let i = 0;
+  let text = '';
+  const chars = EXPLANATION.split('');
+  const cursor = content.querySelector('.cursor');
+
+  const interval = setInterval(() => {
+    if (i >= chars.length) {
+      clearInterval(interval);
+      cursor.remove();
+      streaming = false;
+      return;
+    }
+    const chunk = chars.slice(i, i+4).join('');
+    text += chunk;
+    content.innerHTML = text.replace(/\*\*(.*?)\*\*/g, '<strong style="color:#e8e8f0">$1</strong>') + '<span class="cursor"></span>';
+    i += 4;
+    content.scrollTop = content.scrollHeight;
+  }, 14);
+}
+</script>
+</body>
+</html>
