@@ -5,7 +5,7 @@ type Variant = 'primary' | 'destructive' | 'outline' | 'ghost';
 
 const variants: Record<Variant, string> = {
   primary: 'bg-foreground text-background hover:bg-foreground/80',
-  destructive: 'bg-destructive text-white hover:bg-destructive/80',
+  destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive-hover',
   outline: 'border border-muted text-foreground hover:bg-card',
   ghost: 'text-foreground hover:bg-card'
 };
