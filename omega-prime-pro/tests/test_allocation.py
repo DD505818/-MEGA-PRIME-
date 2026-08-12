@@ -1,7 +1,10 @@
 import importlib.util
 from pathlib import Path
 
-spec = importlib.util.spec_from_file_location("allocation", Path("services/portfolio-service/allocation.py"))
+SERVICE_ROOT = Path(__file__).resolve().parents[1] / "services"
+module_path = SERVICE_ROOT / "portfolio-service" / "allocation.py"
+spec = importlib.util.spec_from_file_location("allocation", module_path)
+assert spec is not None and spec.loader is not None
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 

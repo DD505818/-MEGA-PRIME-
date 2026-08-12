@@ -210,7 +210,7 @@ jobs:
       - name: Build risk-engine for scan
         run: docker build -t omega-prime/risk-engine:scan ./services/risk-engine
 
-      - uses: aquasecurity/trivy-action@0.24.0
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: omega-prime/risk-engine:scan
           format: table
@@ -221,7 +221,7 @@ jobs:
       - name: Build gateway-api for scan
         run: docker build -t omega-prime/gateway-api:scan ./gateway-api
 
-      - uses: aquasecurity/trivy-action@0.24.0
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: omega-prime/gateway-api:scan
           format: table

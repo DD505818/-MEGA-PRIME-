@@ -5,6 +5,10 @@ on:
     branches: [main, develop]
   pull_request:
 
+permissions:
+  contents: read
+  security-events: write
+
 jobs:
   security-scan:
     runs-on: ubuntu-latest
@@ -43,7 +47,7 @@ jobs:
         run: docker build -t omega-prime/risk-engine:test ./services/risk-engine
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: omega-prime/risk-engine:test
           format: sarif
