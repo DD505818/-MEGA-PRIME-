@@ -159,8 +159,8 @@ jobs:
           - {name: feature-engine,        path: services/feature-engine}
           - {name: strategy-engine,       path: services/strategy-engine}
           - {name: rl-agent-cluster,      path: services/rl-agent-cluster}
-          - {name: execution-router,      path: services/execution-router}
-          - {name: risk-engine,           path: services/risk-engine}
+          - {name: execution-router,      path: services/execution-router-go}
+          - {name: risk-engine,           path: services/risk-engine-go}
           - {name: portfolio-service,     path: services/portfolio-service}
           - {name: backtesting-cluster,   path: services/backtesting-cluster}
           - {name: gateway-api,           path: gateway-api}
@@ -208,7 +208,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build risk-engine for scan
-        run: docker build -t omega-prime/risk-engine:scan ./services/risk-engine
+        run: docker build -t omega-prime/risk-engine:scan ./services/risk-engine-go
 
       - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:

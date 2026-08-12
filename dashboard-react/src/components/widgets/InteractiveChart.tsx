@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { createChart, ColorType, CrosshairMode } from 'lightweight-charts'
+import { createChart, ColorType, CrosshairMode, type UTCTimestamp } from 'lightweight-charts'
 import { useAppStore } from '../../store/useAppStore'
 
 const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1D']
@@ -15,7 +15,8 @@ function generateCandles(symbol: string, count = 100) {
     const high  = Math.max(open, close) * (1 + Math.random() * 0.005)
     const low   = Math.min(open, close) * (1 - Math.random() * 0.005)
     price = close
-    return { time: now - (count - i) * 60, open, high, low, close, value: Math.random() * 10 + 1 }
+    const time = (now - (count - i) * 60) as UTCTimestamp
+    return { time, open, high, low, close, value: Math.random() * 10 + 1 }
   })
 }
 
