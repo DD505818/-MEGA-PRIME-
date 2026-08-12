@@ -1,13 +1,29 @@
-import { cn } from '@/lib/utils';
+import type { ReactNode } from 'react';
+import { cn } from '@/lib/utils/cn';
 
 const variants = {
-  success: 'bg-mint/20 text-mint',
-  danger: 'bg-coral/20 text-coral',
-  warning: 'bg-amber/20 text-amber',
-  info: 'bg-cyan/20 text-cyan',
-  neutral: 'bg-slate text-lavender'
+  success: 'bg-success/20 text-success',
+  danger: 'bg-destructive/20 text-destructive',
+  warning: 'bg-warning/20 text-warning',
+  info: 'bg-foreground/10 text-foreground',
+  neutral: 'bg-muted text-foreground'
 };
 
-export function Badge({ variant, children }: { variant: keyof typeof variants; children: React.ReactNode }) {
-  return <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium', variants[variant])}>{children}</span>;
+export function Badge({
+  variant,
+  children
+}: {
+  variant: keyof typeof variants;
+  children: ReactNode;
+}) {
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
+        variants[variant]
+      )}
+    >
+      {children}
+    </span>
+  );
 }

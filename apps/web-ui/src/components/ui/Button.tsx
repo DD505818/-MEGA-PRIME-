@@ -1,13 +1,13 @@
 import { type ButtonHTMLAttributes } from 'react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/lib/utils/cn';
 
 type Variant = 'primary' | 'destructive' | 'outline' | 'ghost';
 
 const variants: Record<Variant, string> = {
-  primary: 'bg-cyan text-midnight hover:bg-cyan/80',
-  destructive: 'bg-coral text-white hover:bg-coral/80',
-  outline: 'border border-slate text-lavender hover:bg-aurora',
-  ghost: 'text-lavender hover:bg-aurora'
+  primary: 'bg-foreground text-background hover:bg-foreground/80',
+  destructive: 'bg-destructive text-white hover:bg-destructive/80',
+  outline: 'border border-muted text-foreground hover:bg-card',
+  ghost: 'text-foreground hover:bg-card'
 };
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -15,7 +15,13 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   size?: 'sm' | 'md' | 'lg';
 }
 
-export function Button({ variant = 'primary', size = 'md', className, children, ...props }: ButtonProps) {
+export function Button({
+  variant = 'primary',
+  size = 'md',
+  className,
+  children,
+  ...props
+}: ButtonProps) {
   return (
     <button
       className={cn(
