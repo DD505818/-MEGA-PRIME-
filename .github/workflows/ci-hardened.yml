@@ -5,6 +5,10 @@ on:
     branches: [main, develop]
   pull_request:
 
+permissions:
+  contents: read
+  security-events: write
+
 jobs:
   security-scan:
     runs-on: ubuntu-latest
@@ -40,10 +44,10 @@ jobs:
           npx --yes lockfile-lint --path package-lock.json --type npm --validate-https
 
       - name: Build risk-engine image
-        run: docker build -t omega-prime/risk-engine:test ./services/risk-engine
+        run: docker build -t omega-prime/risk-engine:test ./services/risk-engine-go
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: omega-prime/risk-engine:test
           format: sarif
@@ -52,7 +56,7 @@ jobs:
           exit-code: '1'
 
       - name: Upload Trivy SARIF
-        if: always()
+        if: ${{ always() && hashFiles('trivy-results.sarif') != '' }}
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-results.sarif
@@ -66,7 +70,7 @@ jobs:
           grype omega-prime/risk-engine:test --fail-on high --output sarif > grype-results.sarif
 
       - name: Upload Grype SARIF
-        if: always()
+        if: ${{ always() && hashFiles('grype-results.sarif') != '' }}
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: grype-results.sarif

@@ -14,7 +14,13 @@ const config: Config = {
         muted: 'hsl(215 15% 20%)',
         success: '#22c55e',
         warning: '#f59e0b',
-        destructive: '#ef4444'
+        destructive: {
+          DEFAULT: '#b91c1c',
+          foreground: '#ffffff',
+          hover: '#991b1b',
+          surface: '#450a0a',
+          subtle: '#fecaca'
+        }
       }
     }
   },

@@ -1,13 +1,13 @@
 import numpy as np
 import pandas as pd
 
-from apps.agent_service.strategies.gap import GAP
-from apps.agent_service.strategies.rev import REV
-from apps.agent_service.strategies.senti import SENTI
-from apps.agent_service.strategies.twin import TWIN
-from apps.agent_service.strategies.maker import MAKER
-from apps.agent_service.strategies.harvest import HARVEST
-from apps.agent_service.strategies import create_active_agents
+from strategies.gap import GAP
+from strategies.rev import REV
+from strategies.senti import SENTI
+from strategies.twin import TWIN
+from strategies.maker import MAKER
+from strategies.harvest import HARVEST
+from strategies import create_active_agents
 
 
 def daily_df(rows=80, start=100.0, step=0.2):
