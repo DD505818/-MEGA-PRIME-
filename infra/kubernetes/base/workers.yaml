@@ -87,8 +87,8 @@ spec:
           image: ghcr.io/dd505818/omega-prime/capital-allocator:db1f614a8cc6a76326434f10be49b590d2afbba8
           envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-production}}]
           ports: [{name: http, containerPort: 8082}]
-          readinessProbe: {tcpSocket: {port: http}, periodSeconds: 5}
-          livenessProbe: {tcpSocket: {port: http}, initialDelaySeconds: 15}
+          readinessProbe: {httpGet: {path: /health/ready, port: http}, periodSeconds: 5, failureThreshold: 3}
+          livenessProbe: {httpGet: {path: /health/live, port: http}, initialDelaySeconds: 15, periodSeconds: 10}
           resources: {requests: {cpu: 100m, memory: 128Mi}, limits: {cpu: "1", memory: 512Mi}}
           securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
 ---
@@ -118,8 +118,8 @@ spec:
           image: ghcr.io/dd505818/omega-prime/fusion-engine:db1f614a8cc6a76326434f10be49b590d2afbba8
           envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-production}}]
           ports: [{name: http, containerPort: 8085}]
-          readinessProbe: {tcpSocket: {port: http}, periodSeconds: 5}
-          livenessProbe: {tcpSocket: {port: http}, initialDelaySeconds: 15}
+          readinessProbe: {httpGet: {path: /health/ready, port: http}, periodSeconds: 5, failureThreshold: 3}
+          livenessProbe: {httpGet: {path: /health/live, port: http}, initialDelaySeconds: 15, periodSeconds: 10}
           resources: {requests: {cpu: 100m, memory: 128Mi}, limits: {cpu: "1", memory: 512Mi}}
           securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
 ---
