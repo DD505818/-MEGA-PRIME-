@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"log"
 	"math"
 	"math/rand"
@@ -207,6 +208,11 @@ func (e *ExecutionEngine) paperFill(order *Order) (float64, error) {
 	notional := order.LimitPrice * order.Qty
 	impact := 0.0001 * math.Sqrt(notional/100_000)
 	jitter := (rand.Float64() - 0.5) * 0.0002
+	if os.Getenv("PAPER_DETERMINISTIC") == "true" {
+		h := fnv.New64a()
+		_, _ = h.Write([]byte(order.SignalID))
+		jitter = (float64(h.Sum64()%20_001)/100_000_000.0)-0.0001
+	}
 
 	if order.Side == "BUY" {
 		return order.LimitPrice * (1 + impact + jitter), nil
