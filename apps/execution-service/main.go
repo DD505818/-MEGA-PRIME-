@@ -432,6 +432,7 @@ func main() {
 		_, _ = w.Write([]byte(`{"status":"live"}`))
 	}
 	readyHandler := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
 		if err := eng.redis.Ping(ctx).Err(); err != nil {
@@ -442,7 +443,11 @@ func main() {
 			http.Error(w, `{"status":"not_ready","dependency":"kafka"}`, http.StatusServiceUnavailable)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
+		assignment, err := eng.consumer.Assignment()
+		if err != nil || len(assignment) == 0 {
+			http.Error(w, `{"status":"not_ready","dependency":"kafka_consumer"}`, http.StatusServiceUnavailable)
+			return
+		}
 		_, _ = w.Write([]byte(`{"status":"ready"}`))
 	}
 	mux.HandleFunc("/health", liveHandler)

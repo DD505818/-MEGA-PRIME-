@@ -27,9 +27,22 @@ jobs:
       PAPER_DETERMINISTIC: "true"
     steps:
       - uses: actions/checkout@v4
-      - name: Start deterministic PAPER slice
+      - name: Start deterministic infrastructure
+        run: docker compose up -d zookeeper kafka redis postgres
+      - name: Create PAPER lifecycle topics
         run: |
-          docker compose up -d --build             zookeeper kafka redis postgres risk-engine execution-engine             portfolio-service truth-core
+          for topic in \
+            signals.raw signals.approved signals.rejected emergency.halt \
+            orders.routed orders.fills market.prices; do
+            docker compose exec -T kafka kafka-topics \
+              --bootstrap-server kafka:9092 \
+              --create --if-not-exists \
+              --topic "$topic" --partitions 1 --replication-factor 1
+          done
+      - name: Start deterministic PAPER services
+        run: |
+          docker compose up -d --build \
+            risk-engine execution-engine portfolio-service truth-core
       - name: Verify risk → fill → position → reconciliation → TruthCore
         run: python3 scripts/verify_paper_chain.py
       - name: Capture diagnostics

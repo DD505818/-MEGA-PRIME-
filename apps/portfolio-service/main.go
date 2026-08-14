@@ -299,6 +299,7 @@ func main() {
 		fmt.Fprint(w, `{"status":"live"}`)
 	}
 	readyHandler := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
 		if err := svc.redis.Ping(ctx).Err(); err != nil {
@@ -313,7 +314,11 @@ func main() {
 			http.Error(w, `{"status":"not_ready","dependency":"kafka"}`, http.StatusServiceUnavailable)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
+		assignment, err := svc.consumer.Assignment()
+		if err != nil || len(assignment) == 0 {
+			http.Error(w, `{"status":"not_ready","dependency":"kafka_consumer"}`, http.StatusServiceUnavailable)
+			return
+		}
 		fmt.Fprint(w, `{"status":"ready"}`)
 	}
 	mux.HandleFunc("/health", liveHandler)
