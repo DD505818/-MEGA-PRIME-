@@ -1,0 +1,98 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: market-data-service
+  namespace: omega-prime
+  labels: &marketLabels {app.kubernetes.io/name: market-data-service, app.kubernetes.io/part-of: omega-prime}
+spec:
+  replicas: 1
+  selector: {matchLabels: *marketLabels}
+  template:
+    metadata: {labels: *marketLabels}
+    spec:
+      serviceAccountName: omega-runtime
+      securityContext: &podSecurity {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: market-data-service
+          image: ghcr.io/dd505818/omega-prime/market-data-service:db1f614a8cc6a76326434f10be49b590d2afbba8
+          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-production}}]
+          resources: {requests: {cpu: 250m, memory: 128Mi}, limits: {cpu: "1", memory: 512Mi}}
+          securityContext: &containerSecurity {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+      terminationGracePeriodSeconds: 60
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: feature-engine
+  namespace: omega-prime
+  labels: &featureLabels {app.kubernetes.io/name: feature-engine, app.kubernetes.io/part-of: omega-prime}
+spec:
+  replicas: 2
+  selector: {matchLabels: *featureLabels}
+  template:
+    metadata: {labels: *featureLabels}
+    spec:
+      serviceAccountName: omega-runtime
+      securityContext: *podSecurity
+      containers:
+        - name: feature-engine
+          image: ghcr.io/dd505818/omega-prime/feature-engine:db1f614a8cc6a76326434f10be49b590d2afbba8
+          env: [{name: PYTHONDONTWRITEBYTECODE, value: "1"}]
+          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-production}}]
+          resources: {requests: {cpu: 250m, memory: 512Mi}, limits: {cpu: "2", memory: 2Gi}}
+          securityContext: *containerSecurity
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {sizeLimit: 256Mi}}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-service
+  namespace: omega-prime
+  labels: &agentLabels {app.kubernetes.io/name: agent-service, app.kubernetes.io/part-of: omega-prime}
+spec:
+  replicas: 2
+  selector: {matchLabels: *agentLabels}
+  template:
+    metadata: {labels: *agentLabels}
+    spec:
+      serviceAccountName: omega-runtime
+      securityContext: *podSecurity
+      containers:
+        - name: agent-service
+          image: ghcr.io/dd505818/omega-prime/agent-service:db1f614a8cc6a76326434f10be49b590d2afbba8
+          env: [{name: PYTHONDONTWRITEBYTECODE, value: "1"}]
+          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-production}}]
+          resources: {requests: {cpu: 250m, memory: 512Mi}, limits: {cpu: "2", memory: 2Gi}}
+          securityContext: *containerSecurity
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {sizeLimit: 256Mi}}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: capital-allocator
+  namespace: omega-prime
+  labels: &capitalLabels {app.kubernetes.io/name: capital-allocator, app.kubernetes.io/part-of: omega-prime}
+spec:
+  replicas: 2
+  selector: {matchLabels: *capitalLabels}
+  template:
+    metadata: {labels: *capitalLabels}
+    spec:
+      serviceAccountName: omega-runtime
+      securityContext: *podSecurity
+      containers:
+        - name: capital-allocator
+          image: ghcr.io/dd505818/omega-prime/capital-allocator:db1f614a8cc6a76326434f10be49b590d2afbba8
+          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-production}}]
+          ports: [{name: http, containerPort: 8082}]
+          readinessProbe: {tcpSocket: {port: http}, periodSeconds: 5}
+          livenessProbe: {tcpSocket: {port: http}, initialDelaySeconds: 15}
+          resources: {requests: {cpu: 100m, memory: 128Mi}, limits: {cpu: "1", memory: 512Mi}}
+          securityContext: *containerSecurity
+---
+apiVersion: v1
+kind: Service
+metadata: {name: capital-allocator, namespace: omega-prime}
+spec: {selector: *capitalLabels, ports: [{name: http, port: 8082, targetPort: http}]}
