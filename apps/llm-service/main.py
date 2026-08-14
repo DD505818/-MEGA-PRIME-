@@ -12,6 +12,7 @@ from typing import Optional
 import redis.asyncio as aioredis
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 import httpx
+from transport import kafka_client_kwargs
 
 log = logging.getLogger("llm-service")
 logging.basicConfig(level=logging.INFO)
@@ -54,10 +55,11 @@ async def explain_signal(signal: dict, client: httpx.AsyncClient) -> Optional[st
 
 async def main():
     rdb = aioredis.from_url(REDIS_URL)
-    producer = AIOKafkaProducer(bootstrap_servers=KAFKA)
+    kafka_kwargs = kafka_client_kwargs()
+    producer = AIOKafkaProducer(**kafka_kwargs)
     consumer = AIOKafkaConsumer(
         "signals.approved",
-        bootstrap_servers=KAFKA,
+        **kafka_kwargs,
         group_id="llm-service",
         auto_offset_reset="latest",
     )
