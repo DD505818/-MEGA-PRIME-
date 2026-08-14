@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: omega-runtime
+  namespace: omega-prime
+data:
+  PAPER_MODE: "true"
+  LIVE_TRADING_ENABLED: "false"
+  TRADING_MODE: "PAPER"
+  MAX_DAILY_LOSS: "0.02"
+  MAX_DRAWDOWN: "0.08"
+  MAX_POSITIONS: "3"
+  MAX_NOTIONAL_PER_TRADE: "500"
+  MAX_LEVERAGE: "1.0"
+  MIN_CONFIDENCE: "0.65"
+  RISK_PER_TRADE: "0.005"
+  PORTFOLIO_EQUITY: "2000"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: omega-runtime
+  namespace: omega-prime
+automountServiceAccountToken: false
