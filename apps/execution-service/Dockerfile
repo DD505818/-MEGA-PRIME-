@@ -4,6 +4,7 @@ WORKDIR /app
 COPY go.mod go.sum* ./
 RUN go mod download
 COPY . .
+RUN go mod tidy && go mod verify
 RUN CGO_ENABLED=1 go build -o execution-service .
 
 FROM alpine:3.19
