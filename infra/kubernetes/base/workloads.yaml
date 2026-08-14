@@ -16,7 +16,7 @@ spec:
         - name: risk-service
           image: ghcr.io/dd505818/omega-prime/risk-service:db1f614a8cc6a76326434f10be49b590d2afbba8
           imagePullPolicy: IfNotPresent
-          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-production}}]
+          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-kafka}}, {secretRef: {name: omega-redis}}]
           ports: [{name: http, containerPort: 8080}]
           readinessProbe: {httpGet: {path: /health/ready, port: http}, timeoutSeconds: 5, periodSeconds: 5, failureThreshold: 3}
           livenessProbe: {httpGet: {path: /health/live, port: http}, timeoutSeconds: 5, initialDelaySeconds: 15, periodSeconds: 10}
@@ -48,7 +48,7 @@ spec:
       containers:
         - name: execution-service
           image: ghcr.io/dd505818/omega-prime/execution-service:db1f614a8cc6a76326434f10be49b590d2afbba8
-          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-production}}]
+          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-kafka}}, {secretRef: {name: omega-redis}}]
           ports: [{name: http, containerPort: 8081}]
           readinessProbe: {httpGet: {path: /health/ready, port: http}, timeoutSeconds: 5, periodSeconds: 5, failureThreshold: 3}
           livenessProbe: {httpGet: {path: /health/live, port: http}, timeoutSeconds: 5, initialDelaySeconds: 15, periodSeconds: 10}
@@ -80,7 +80,7 @@ spec:
       containers:
         - name: portfolio-service
           image: ghcr.io/dd505818/omega-prime/portfolio-service:db1f614a8cc6a76326434f10be49b590d2afbba8
-          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-production}}]
+          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-kafka}}, {secretRef: {name: omega-redis}}, {secretRef: {name: omega-postgres}}]
           ports: [{name: http, containerPort: 8083}]
           readinessProbe: {httpGet: {path: /health/ready, port: http}, timeoutSeconds: 5, periodSeconds: 5, failureThreshold: 3}
           livenessProbe: {httpGet: {path: /health/live, port: http}, timeoutSeconds: 5, initialDelaySeconds: 15, periodSeconds: 10}
@@ -111,7 +111,7 @@ spec:
       containers:
         - name: truth-core
           image: ghcr.io/dd505818/omega-prime/truth-core:db1f614a8cc6a76326434f10be49b590d2afbba8
-          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-production}}]
+          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-postgres}}]
           ports: [{name: http, containerPort: 8084}]
           readinessProbe: {httpGet: {path: /health/ready, port: http}, timeoutSeconds: 5, periodSeconds: 5, failureThreshold: 3}
           livenessProbe: {httpGet: {path: /health/live, port: http}, timeoutSeconds: 5, initialDelaySeconds: 15, periodSeconds: 10}
@@ -143,7 +143,7 @@ spec:
       containers:
         - name: websocket-gateway
           image: ghcr.io/dd505818/omega-prime/websocket-gateway:db1f614a8cc6a76326434f10be49b590d2afbba8
-          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-production}}]
+          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-kafka}}, {secretRef: {name: omega-redis}}, {secretRef: {name: omega-websocket}}]
           env: [{name: PORT, value: "3001"}]
           ports: [{name: http, containerPort: 3001}]
           readinessProbe: {httpGet: {path: /health/ready, port: http}, timeoutSeconds: 5, periodSeconds: 5, failureThreshold: 3}

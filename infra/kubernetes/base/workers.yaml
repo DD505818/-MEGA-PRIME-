@@ -15,7 +15,7 @@ spec:
       containers:
         - name: market-data-service
           image: ghcr.io/dd505818/omega-prime/market-data-service:db1f614a8cc6a76326434f10be49b590d2afbba8
-          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-production}}]
+          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-kafka}}]
           ports: [{name: http, containerPort: 8090}]
           readinessProbe: {httpGet: {path: /health/ready, port: http}, timeoutSeconds: 5, periodSeconds: 5, failureThreshold: 3}
           livenessProbe: {httpGet: {path: /health/live, port: http}, timeoutSeconds: 5, initialDelaySeconds: 15, periodSeconds: 10}
@@ -41,7 +41,7 @@ spec:
         - name: feature-engine
           image: ghcr.io/dd505818/omega-prime/feature-engine:db1f614a8cc6a76326434f10be49b590d2afbba8
           env: [{name: PYTHONDONTWRITEBYTECODE, value: "1"}]
-          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-production}}]
+          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-kafka}}, {secretRef: {name: omega-redis}}]
           ports: [{name: http, containerPort: 8090}]
           readinessProbe: {httpGet: {path: /health/ready, port: http}, timeoutSeconds: 5, periodSeconds: 5, failureThreshold: 3}
           livenessProbe: {httpGet: {path: /health/live, port: http}, timeoutSeconds: 5, initialDelaySeconds: 15, periodSeconds: 10}
@@ -68,7 +68,7 @@ spec:
         - name: agent-service
           image: ghcr.io/dd505818/omega-prime/agent-service:db1f614a8cc6a76326434f10be49b590d2afbba8
           env: [{name: PYTHONDONTWRITEBYTECODE, value: "1"}]
-          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-production}}]
+          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-kafka}}]
           ports: [{name: http, containerPort: 8090}]
           readinessProbe: {httpGet: {path: /health/ready, port: http}, timeoutSeconds: 5, periodSeconds: 5, failureThreshold: 3}
           livenessProbe: {httpGet: {path: /health/live, port: http}, timeoutSeconds: 5, initialDelaySeconds: 15, periodSeconds: 10}
@@ -94,7 +94,7 @@ spec:
       containers:
         - name: capital-allocator
           image: ghcr.io/dd505818/omega-prime/capital-allocator:db1f614a8cc6a76326434f10be49b590d2afbba8
-          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-production}}]
+          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-kafka}}, {secretRef: {name: omega-redis}}]
           ports: [{name: http, containerPort: 8082}]
           readinessProbe: {httpGet: {path: /health/ready, port: http}, timeoutSeconds: 5, periodSeconds: 5, failureThreshold: 3}
           livenessProbe: {httpGet: {path: /health/live, port: http}, timeoutSeconds: 5, initialDelaySeconds: 15, periodSeconds: 10}
@@ -125,7 +125,7 @@ spec:
       containers:
         - name: fusion-engine
           image: ghcr.io/dd505818/omega-prime/fusion-engine:db1f614a8cc6a76326434f10be49b590d2afbba8
-          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-production}}]
+          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-kafka}}, {secretRef: {name: omega-redis}}]
           ports: [{name: http, containerPort: 8085}]
           readinessProbe: {httpGet: {path: /health/ready, port: http}, timeoutSeconds: 5, periodSeconds: 5, failureThreshold: 3}
           livenessProbe: {httpGet: {path: /health/live, port: http}, timeoutSeconds: 5, initialDelaySeconds: 15, periodSeconds: 10}
@@ -157,7 +157,7 @@ spec:
         - name: llm-service
           image: ghcr.io/dd505818/omega-prime/llm-service:db1f614a8cc6a76326434f10be49b590d2afbba8
           env: [{name: PYTHONDONTWRITEBYTECODE, value: "1"}]
-          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-production}}]
+          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-kafka}}, {secretRef: {name: omega-redis}}, {secretRef: {name: omega-llm}}]
           ports: [{name: http, containerPort: 8090}]
           readinessProbe: {httpGet: {path: /health/ready, port: http}, timeoutSeconds: 5, periodSeconds: 5, failureThreshold: 3}
           livenessProbe: {httpGet: {path: /health/live, port: http}, timeoutSeconds: 5, initialDelaySeconds: 15, periodSeconds: 10}
