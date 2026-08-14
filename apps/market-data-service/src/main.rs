@@ -87,11 +87,12 @@ async fn main() {
                 "bid": 62999.0,
                 "ask": 63001.0
             });
+            let payload = tick.to_string();
             producer
                 .send(
                     FutureRecord::to("market.raw")
-                        .payload(&tick.to_string())
-                        .key(&symbol),
+                        .payload(&payload)
+                        .key(*symbol),
                     Duration::from_secs(1),
                 )
                 .await

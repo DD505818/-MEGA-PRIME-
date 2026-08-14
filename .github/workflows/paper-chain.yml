@@ -9,6 +9,7 @@ on:
       - "apps/truth-core/**"
       - "scripts/verify_paper_chain.py"
       - "docker-compose.yml"
+      - "infra/db-migrations/**"
       - ".github/workflows/paper-chain.yml"
   workflow_dispatch:
 
