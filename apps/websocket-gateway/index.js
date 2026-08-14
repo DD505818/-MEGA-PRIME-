@@ -22,6 +22,8 @@ const KAFKA_BROKERS = (process.env.KAFKA_BROKERS || 'kafka:9092').split(',');
 const REDIS_URL = process.env.REDIS_URL || 'redis://redis:6379';
 const JWT_SECRET = process.env.JWT_SECRET || 'change-me';
 const PORT = parseInt(process.env.PORT || '3001', 10);
+const ALLOW_DEV_TOKEN = process.env.ALLOW_DEV_TOKEN === 'true';
+let kafkaReady = false;
 
 // Kafka topics to bridge
 const TOPICS = [
@@ -54,7 +56,18 @@ const clients = new Map();
 // ── HTTP + WS server ──────────────────────────────────────────────────────────
 
 const app = express();
-app.get('/health', (req, res) => res.json({ status: 'ok', clients: clients.size }));
+app.get('/health', (req, res) => res.json({ status: 'live', clients: clients.size }));
+app.get('/health/live', (req, res) => res.json({ status: 'live' }));
+app.get('/health/ready', (req, res) => {
+  const redisReady = redisClient?.isReady === true;
+  if (!kafkaReady || !redisReady) {
+    return res.status(503).json({
+      status: 'not_ready',
+      dependencies: { kafka: kafkaReady, redis: redisReady },
+    });
+  }
+  return res.json({ status: 'ready' });
+});
 app.get('/metrics', (req, res) => res.json({ connected: clients.size, topics: TOPICS }));
 
 const server = app.listen(PORT, () => {
@@ -109,6 +122,8 @@ const consumer = kafka.consumer({ groupId: 'ws-gateway' });
 async function startKafka() {
   await consumer.connect();
   await consumer.subscribe({ topics: TOPICS, fromBeginning: false });
+  kafkaReady = true;
+  console.log('[ws-gateway] Kafka consumer connected, topics:', TOPICS.join(', '));
 
   await consumer.run({
     eachMessage: async ({ topic, message }) => {
@@ -130,7 +145,6 @@ async function startKafka() {
     },
   });
 
-  console.log('[ws-gateway] Kafka consumer connected, topics:', TOPICS.join(', '));
 }
 
 // ── Redis health publisher ────────────────────────────────────────────────────
@@ -186,14 +200,14 @@ function verifyToken(token) {
     jwt.verify(token, JWT_SECRET);
     return true;
   } catch {
-    // In paper-mode/dev allow a special dev token
-    return token === 'dev-token';
+    return ALLOW_DEV_TOKEN && token === 'dev-token';
   }
 }
 
 // ── Startup ───────────────────────────────────────────────────────────────────
 
 startKafka().catch((err) => {
+  kafkaReady = false;
   console.error('[ws-gateway] Kafka startup error:', err.message);
   // Retry after 5s
   setTimeout(() => startKafka(), 5000);
