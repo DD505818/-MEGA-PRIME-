@@ -12,6 +12,8 @@ COPY . .
 RUN npm run typecheck && npm run build
 
 FROM node:20.18.1-alpine3.20 AS runner
+ARG SOURCE_URL="https://github.com/DD505818/-MEGA-PRIME-"
+LABEL org.opencontainers.image.source=$SOURCE_URL
 WORKDIR /app
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
