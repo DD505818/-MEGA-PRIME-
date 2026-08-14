@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync"
 	"time"
 
@@ -70,6 +71,13 @@ func NewPortfolioService(redisAddr, brokers, pgDSN string) *PortfolioService {
 	}
 
 	baseEquity := 100_000.0
+	if configured := os.Getenv("PORTFOLIO_EQUITY"); configured != "" {
+		parsed, err := strconv.ParseFloat(configured, 64)
+		if err != nil || parsed <= 0 {
+			log.Fatalf("invalid PORTFOLIO_EQUITY %q", configured)
+		}
+		baseEquity = parsed
+	}
 
 	return &PortfolioService{
 		redis:      rdb,
@@ -268,6 +276,10 @@ func main() {
 		}
 		if svc.db == nil || svc.db.Ping(ctx) != nil {
 			http.Error(w, `{"status":"not_ready","dependency":"postgres"}`, http.StatusServiceUnavailable)
+			return
+		}
+		if _, err := svc.consumer.GetMetadata(nil, true, 2000); err != nil {
+			http.Error(w, `{"status":"not_ready","dependency":"kafka"}`, http.StatusServiceUnavailable)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")

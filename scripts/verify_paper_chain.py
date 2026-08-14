@@ -14,6 +14,7 @@ import urllib.error
 import urllib.request
 
 SIGNAL_ID = "00000000-0000-4000-8000-000000000058"
+EXPECTED_FILL_PRICE = 60005.792369384566
 SIGNAL = {
     "signal_id": SIGNAL_ID,
     "strategy_id": "PAPER_PROOF",
@@ -80,12 +81,42 @@ def main() -> None:
             lambda value: isinstance(value, dict) and value.get("status") == "ready",
         )
 
-    paper_mode = run(
-        "docker", "compose", "exec", "-T", "risk-engine",
-        "sh", "-c", "printf %s \"$PAPER_MODE\"",
+    expected_env = {
+        "risk-engine": {
+            "PAPER_MODE": "true",
+            "LIVE_TRADING_ENABLED": "false",
+        },
+        "execution-engine": {
+            "PAPER_MODE": "true",
+            "PAPER_DETERMINISTIC": "true",
+            "LIVE_TRADING_ENABLED": "false",
+        },
+    }
+    for service, variables in expected_env.items():
+        for key, expected in variables.items():
+            actual = run(
+                "docker", "compose", "exec", "-T", service,
+                "sh", "-c", f'printf %s "${key}"',
+            )
+            if actual != expected:
+                raise RuntimeError(
+                    f"{service} is not fail-closed: {key}={actual!r}, expected {expected!r}"
+                )
+
+    live_attempt = subprocess.run(
+        [
+            "docker", "compose", "run", "--rm", "--no-deps", "-T",
+            "-e", "PAPER_MODE=false",
+            "-e", "LIVE_TRADING_ENABLED=true",
+            "execution-engine",
+        ],
+        text=True,
+        capture_output=True,
     )
-    if paper_mode != "true":
-        raise RuntimeError(f"risk engine is not PAPER-only: PAPER_MODE={paper_mode!r}")
+    if live_attempt.returncode == 0:
+        raise RuntimeError("execution service accepted LIVE mode before certification")
+    if "LIVE execution is disabled" not in live_attempt.stderr:
+        raise RuntimeError(f"unexpected LIVE guard failure: {live_attempt.stderr}")
 
     now_ms = str(int(time.time() * 1000))
     seeds = {
@@ -119,6 +150,11 @@ def main() -> None:
         ),
     )
     order = next(order for order in orders if order.get("signal_id") == SIGNAL_ID)
+    fill_price = float(order["avg_fill_price"])
+    if not math.isclose(fill_price, EXPECTED_FILL_PRICE, rel_tol=0.0, abs_tol=1e-9):
+        raise RuntimeError(
+            f"non-deterministic PAPER fill: {fill_price} != {EXPECTED_FILL_PRICE}"
+        )
     audit("paper.risk_approved", {
         "signal_id": SIGNAL_ID,
         "adjusted_quantity": order["quantity"],
@@ -160,7 +196,7 @@ def main() -> None:
         "live_enabled": False,
         "signal_id": SIGNAL_ID,
         "order_id": order["order_id"],
-        "fill_price": order["avg_fill_price"],
+        "fill_price": fill_price,
         "position_quantity": actual,
         "reconciled": True,
         "truthcore": verification,

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 
-const routes = ['/', '/markets', '/portfolio', '/agents', '/studio', '/rl', '/execution', '/risk', '/reports', '/settings'];
+const routes = ['/', '/markets', '/portfolio', '/agents', '/studio', '/rl', '/execution', '/risk', '/reports', '/settings'] as const;
 
 export function Sidebar() {
   return (

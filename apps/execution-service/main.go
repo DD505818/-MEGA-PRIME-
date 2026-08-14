@@ -89,6 +89,11 @@ type ExecutionEngine struct {
 }
 
 func NewExecutionEngine(redisAddr, brokers string) *ExecutionEngine {
+	paperMode := os.Getenv("PAPER_MODE") == "" || os.Getenv("PAPER_MODE") == "true"
+	if !paperMode || os.Getenv("LIVE_TRADING_ENABLED") == "true" {
+		log.Fatal("LIVE execution is disabled pending broker certification and failure testing")
+	}
+
 	rdb := newRedisClient(redisAddr)
 
 	c, err := kafka.NewConsumer(kafkaTransport(kafka.ConfigMap{
@@ -105,8 +110,6 @@ func NewExecutionEngine(redisAddr, brokers string) *ExecutionEngine {
 	if err != nil {
 		log.Fatalf("execution kafka producer: %v", err)
 	}
-
-	paperMode := os.Getenv("PAPER_MODE") == "" || os.Getenv("PAPER_MODE") == "true"
 
 	return &ExecutionEngine{
 		redis:     rdb,
@@ -332,7 +335,7 @@ func selectAlgo(order *Order) (OrderType, map[string]interface{}) {
 	case notional > 30_000:
 		return TypeVWAP, map[string]interface{}{"participation_rate": 0.1}
 	case notional > 10_000:
-		nSlices := min3(5, max2(3, int(notional/4_000)))
+		nSlices := min3(5, max2(3, int(notional/4_000)), 5)
 		return TypeIceberg, map[string]interface{}{"n_slices": nSlices, "interval_secs": 30}
 	case notional > 2_000:
 		return TypeTWAP, map[string]interface{}{"duration_mins": 10, "n_slices": 5}

@@ -5,7 +5,7 @@ COPY go.mod go.sum* ./
 RUN go mod download
 COPY . .
 RUN go mod tidy && go mod verify
-RUN CGO_ENABLED=1 go build -o fusion-engine .
+RUN CGO_ENABLED=1 go build -tags musl -trimpath -o fusion-engine .
 
 FROM alpine:3.19
 RUN apk add --no-cache librdkafka ca-certificates

@@ -20,7 +20,7 @@ permissions:
   attestations: write
 
 concurrency:
-  group: ghcr-${{ github.ref }}
+  group: ghcr-${{ github.event.pull_request.head.sha || github.sha }}
   cancel-in-progress: true
 
 jobs:
