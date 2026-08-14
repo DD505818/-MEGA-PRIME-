@@ -1,14 +1,28 @@
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use rdkafka::config::ClientConfig;
 use serde_json::json;
+use std::env;
 use std::time::Duration;
 
 #[tokio::main]
 async fn main() {
-    let producer: FutureProducer = ClientConfig::new()
-        .set("bootstrap.servers", "kafka:9092")
-        .create()
-        .expect("Producer creation error");
+    let mut config = ClientConfig::new();
+    config.set(
+        "bootstrap.servers",
+        env::var("KAFKA_BROKERS").unwrap_or_else(|_| "kafka:9092".to_string()),
+    );
+    for (env_key, kafka_key) in [
+        ("KAFKA_SECURITY_PROTOCOL", "security.protocol"),
+        ("KAFKA_SASL_MECHANISM", "sasl.mechanism"),
+        ("KAFKA_SASL_USERNAME", "sasl.username"),
+        ("KAFKA_SASL_PASSWORD", "sasl.password"),
+        ("KAFKA_SSL_CA_LOCATION", "ssl.ca.location"),
+    ] {
+        if let Ok(value) = env::var(env_key) {
+            config.set(kafka_key, value);
+        }
+    }
+    let producer: FutureProducer = config.create().expect("Producer creation error");
 
     let symbols = vec!["BTCUSDT", "ETHUSDT", "SOLUSDT"];
     let mut counter = 0u64;
