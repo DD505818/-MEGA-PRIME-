@@ -1,15 +1,17 @@
-import asyncio, json, pickle
+import asyncio, json, os, pickle
 from collections import deque
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 import numpy as np
 import redis.asyncio as redis
 import talib
+from transport import kafka_client_kwargs
 
 class FeatureEngine:
     def __init__(self):
-        self.consumer = AIOKafkaConsumer('market.raw', bootstrap_servers='kafka:9092')
-        self.producer = AIOKafkaProducer(bootstrap_servers='kafka:9092')
-        self.redis = redis.Redis(host='redis', port=6379)
+        kafka_kwargs = kafka_client_kwargs()
+        self.consumer = AIOKafkaConsumer('market.raw', **kafka_kwargs)
+        self.producer = AIOKafkaProducer(**kafka_kwargs)
+        self.redis = redis.from_url(os.getenv('REDIS_URL', 'redis://redis:6379'))
         self.buffer = {}
 
     async def run(self):
