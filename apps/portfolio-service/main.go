@@ -159,9 +159,11 @@ func (ps *PortfolioService) processFill(ctx context.Context, fill map[string]int
 		ps.portfolio.TotalPnL += realPnL
 	}
 
-	// Persist to DB
+	// Persist the broker-view fill and resulting position before exposing it.
 	if ps.db != nil {
-		ps.persistFill(ctx, fill)
+		if err := ps.persistFill(ctx, fill, pos); err != nil {
+			log.Printf("portfolio persistence failed: %v", err)
+		}
 	}
 
 	// Update equity
@@ -211,17 +213,46 @@ func (ps *PortfolioService) publishState(ctx context.Context) {
 	ps.redis.Set(ctx, "portfolio:drawdown", ps.portfolio.Drawdown, 0)
 }
 
-func (ps *PortfolioService) persistFill(ctx context.Context, fill map[string]interface{}) {
+func (ps *PortfolioService) persistFill(
+	ctx context.Context,
+	fill map[string]interface{},
+	position *Position,
+) error {
 	if ps.db == nil {
-		return
+		return nil
 	}
-	_, _ = ps.db.Exec(ctx,
+	tx, err := ps.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx,
 		`INSERT INTO fills (order_id, signal_id, strategy_id, symbol, side, quantity, fill_price, created_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-		 ON CONFLICT DO NOTHING`,
+		 ON CONFLICT (order_id) DO NOTHING`,
 		fill["order_id"], fill["signal_id"], fill["strategy_id"],
 		fill["symbol"], fill["side"], fill["filled_qty"], fill["avg_fill_price"],
-	)
+	); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO positions
+		 (symbol, quantity, avg_cost, market_value, unrealized_pnl, realized_pnl, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, NOW())
+		 ON CONFLICT (symbol) DO UPDATE SET
+		 quantity = EXCLUDED.quantity,
+		 avg_cost = EXCLUDED.avg_cost,
+		 market_value = EXCLUDED.market_value,
+		 unrealized_pnl = EXCLUDED.unrealized_pnl,
+		 realized_pnl = EXCLUDED.realized_pnl,
+		 updated_at = NOW()`,
+		position.Symbol, position.Qty, position.AvgCost, position.MarketVal,
+		position.UnrealPnL, position.RealPnL,
+	); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (ps *PortfolioService) portfolioHandler(w http.ResponseWriter, r *http.Request) {

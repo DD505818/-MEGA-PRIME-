@@ -12,6 +12,7 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
+import uuid
 
 SIGNAL_ID = "00000000-0000-4000-8000-000000000058"
 EXPECTED_FILL_PRICE = 60005.792369384566
@@ -171,17 +172,46 @@ def main() -> None:
     position = next(position for position in positions if position.get("symbol") == "BTCUSD")
     audit("paper.position", position)
 
+    order_id = str(uuid.UUID(order["order_id"]))
+    fill_row = run(
+        "docker", "compose", "exec", "-T", "postgres",
+        "psql", "-U", "postgres", "-d", "omega", "-Atc",
+        (
+            "SELECT quantity::text || '|' || fill_price::text "
+            f"FROM fills WHERE order_id = '{order_id}'::uuid"
+        ),
+    )
+    if not fill_row:
+        raise RuntimeError(f"durable fill missing for order {order_id}")
+    durable_fill_qty, durable_fill_price = map(float, fill_row.split("|"))
+    durable_position_qty = float(
+        run(
+            "docker", "compose", "exec", "-T", "postgres",
+            "psql", "-U", "postgres", "-d", "omega", "-Atc",
+            "SELECT quantity::text FROM positions WHERE symbol = 'BTCUSD'",
+        )
+    )
+
     expected = float(order["filled_qty"])
-    actual = float(position["quantity"])
-    reconciled = math.isclose(expected, actual, rel_tol=0.0, abs_tol=1e-12)
+    api_position_qty = float(position["quantity"])
+    reconciled = all(
+        math.isclose(expected, value, rel_tol=0.0, abs_tol=1e-12)
+        for value in (api_position_qty, durable_fill_qty, durable_position_qty)
+    ) and math.isclose(
+        fill_price, durable_fill_price, rel_tol=0.0, abs_tol=1e-8
+    )
     reconciliation = {
         "signal_id": SIGNAL_ID,
-        "order_id": order["order_id"],
+        "order_id": order_id,
         "symbol": "BTCUSD",
-        "expected_quantity": expected,
-        "actual_quantity": actual,
+        "execution_quantity": expected,
+        "api_position_quantity": api_position_qty,
+        "durable_fill_quantity": durable_fill_qty,
+        "durable_position_quantity": durable_position_qty,
+        "execution_fill_price": fill_price,
+        "durable_fill_price": durable_fill_price,
         "reconciled": reconciled,
-        "source": "independent-proof-ledger",
+        "source": "execution+portfolio+postgres",
     }
     audit("paper.reconciliation", reconciliation)
     if not reconciled:
@@ -190,6 +220,20 @@ def main() -> None:
     verification = request_json("http://127.0.0.1:8084/verify")
     if not verification.get("valid") or verification.get("verified_entries", 0) < 6:
         raise RuntimeError(f"TruthCore verification failed: {verification}")
+    recent = request_json("http://127.0.0.1:8084/recent")
+    expected_events = [
+        "paper.market_snapshot",
+        "paper.proposal",
+        "paper.risk_approved",
+        "paper.fill",
+        "paper.position",
+        "paper.reconciliation",
+    ]
+    observed_events = [entry["event_type"] for entry in reversed(recent[:6])]
+    if observed_events != expected_events:
+        raise RuntimeError(
+            f"TruthCore lifecycle mismatch: {observed_events} != {expected_events}"
+        )
 
     result = {
         "mode": "PAPER",
@@ -197,7 +241,8 @@ def main() -> None:
         "signal_id": SIGNAL_ID,
         "order_id": order["order_id"],
         "fill_price": fill_price,
-        "position_quantity": actual,
+        "position_quantity": api_position_qty,
+        "durable_position_quantity": durable_position_qty,
         "reconciled": True,
         "truthcore": verification,
     }

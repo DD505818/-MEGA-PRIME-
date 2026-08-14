@@ -1,7 +1,7 @@
 // Truth-Core — append-only, SHA-256 hash-chained audit log.
 //
 // Every INSERT reads the previous row's hash under SELECT ... FOR UPDATE,
-// computes SHA-256(prev_hash || record_json), and commits atomically.
+// computes SHA-256(prev_hash || event_type || record_json), and commits atomically.
 // Any gap or reordering is detected on read via VerifyChain().
 package main
 
@@ -50,18 +50,32 @@ type TruthCore struct {
 	db *pgxpool.Pool
 }
 
+func computeHash(prevHash, eventType string, payload []byte) string {
+	h := sha256.New()
+	h.Write([]byte(prevHash))
+	h.Write([]byte{0})
+	h.Write([]byte(eventType))
+	h.Write([]byte{0})
+	h.Write(payload)
+	return hex.EncodeToString(h.Sum(nil))
+}
+
 func NewTruthCore(dsn string) *TruthCore {
 	db, err := pgxpool.New(context.Background(), dsn)
 	if err != nil {
 		log.Fatalf("truth-core postgres: %v", err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
+	deadline := time.Now().Add(30 * time.Second)
 	for {
-		if err := db.Ping(ctx); err == nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		err := db.Ping(ctx)
+		cancel()
+		if err == nil {
 			break
+		}
+		if time.Now().After(deadline) {
+			log.Fatalf("truth-core postgres unavailable after 30s: %v", err)
 		}
 		log.Println("truth-core: waiting for postgres...")
 		time.Sleep(2 * time.Second)
@@ -99,11 +113,8 @@ func (tc *TruthCore) Append(ctx context.Context, eventType string, payload inter
 		}
 	}
 
-	// Compute SHA-256(prev_hash || payload)
-	h := sha256.New()
-	h.Write([]byte(prevHash))
-	h.Write(payloadBytes)
-	newHash := hex.EncodeToString(h.Sum(nil))
+	// Domain-separated hash binds both the event type and canonical JSON payload.
+	newHash := computeHash(prevHash, eventType, payloadBytes)
 
 	entryID := uuid.NewString()
 	entry := &AuditEntry{
@@ -134,7 +145,7 @@ func (tc *TruthCore) Append(ctx context.Context, eventType string, payload inter
 // Returns the count of verified entries and any tampering error.
 func (tc *TruthCore) VerifyChain(ctx context.Context) (int, error) {
 	rows, err := tc.db.Query(ctx,
-		`SELECT id, prev_hash, hash, payload FROM audit_log ORDER BY id ASC`)
+		`SELECT id, prev_hash, hash, event_type, payload FROM audit_log ORDER BY id ASC`)
 	if err != nil {
 		return 0, err
 	}
@@ -145,10 +156,10 @@ func (tc *TruthCore) VerifyChain(ctx context.Context) (int, error) {
 
 	for rows.Next() {
 		var id int64
-		var storedPrevHash, storedHash string
+		var storedPrevHash, storedHash, eventType string
 		var payload []byte
 
-		if err := rows.Scan(&id, &storedPrevHash, &storedHash, &payload); err != nil {
+		if err := rows.Scan(&id, &storedPrevHash, &storedHash, &eventType, &payload); err != nil {
 			return count, err
 		}
 
@@ -157,10 +168,7 @@ func (tc *TruthCore) VerifyChain(ctx context.Context) (int, error) {
 				id, prevHash, storedPrevHash)
 		}
 
-		h := sha256.New()
-		h.Write([]byte(storedPrevHash))
-		h.Write(payload)
-		expectedHash := hex.EncodeToString(h.Sum(nil))
+		expectedHash := computeHash(storedPrevHash, eventType, payload)
 		if expectedHash != storedHash {
 			return count, fmt.Errorf("hash mismatch at id=%d: stored=%s computed=%s",
 				id, storedHash, expectedHash)
@@ -179,7 +187,11 @@ func (tc *TruthCore) appendHandler(w http.ResponseWriter, r *http.Request) {
 		Payload   json.RawMessage `json:"payload"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, "invalid json", 400)
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+	if body.EventType == "" || len(body.Payload) == 0 {
+		http.Error(w, "event_type and payload are required", http.StatusBadRequest)
 		return
 	}
 	entry, err := tc.Append(r.Context(), body.EventType, body.Payload)

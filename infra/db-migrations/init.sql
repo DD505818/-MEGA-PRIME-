@@ -62,7 +62,7 @@ CREATE INDEX IF NOT EXISTS idx_orders_state    ON orders(state);
 -- ── Fills ────────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS fills (
     fill_id         BIGSERIAL PRIMARY KEY,
-    order_id        UUID        NOT NULL,
+    order_id        UUID        NOT NULL UNIQUE,
     signal_id       UUID,
     strategy_id     TEXT        NOT NULL,
     symbol          TEXT        NOT NULL,
