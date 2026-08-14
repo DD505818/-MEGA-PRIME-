@@ -12,7 +12,6 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
@@ -42,20 +41,19 @@ type Allocator struct {
 }
 
 func NewAllocator(redisAddr, brokers string) *Allocator {
-	addr := strings.TrimPrefix(redisAddr, "redis://")
-	rdb := redis.NewClient(&redis.Options{Addr: addr})
+	rdb := newRedisClient(redisAddr)
 
-	c, err := kafka.NewConsumer(&kafka.ConfigMap{
+	c, err := kafka.NewConsumer(kafkaTransport(kafka.ConfigMap{
 		"bootstrap.servers": brokers,
 		"group.id":          "capital-allocator",
 		"auto.offset.reset": "latest",
-	})
+	}))
 	if err != nil {
 		log.Fatalf("allocator consumer: %v", err)
 	}
 	c.SubscribeTopics([]string{"signals.approved"}, nil)
 
-	p, err := kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": brokers})
+	p, err := kafka.NewProducer(kafkaTransport(kafka.ConfigMap{"bootstrap.servers": brokers}))
 	if err != nil {
 		log.Fatalf("allocator producer: %v", err)
 	}
