@@ -11,6 +11,7 @@ from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 
 from normalizer import normalize_signal
 from signal_validator import validate
+from transport import kafka_client_kwargs
 
 log = logging.getLogger("orchestrator")
 KAFKA = os.getenv("KAFKA_BROKERS", "kafka:9092")
@@ -34,10 +35,11 @@ class Orchestrator:
         self._intraday_df: pd.DataFrame = pd.DataFrame()
 
     async def run(self) -> None:
-        producer = AIOKafkaProducer(bootstrap_servers=KAFKA)
+        kafka_kwargs = kafka_client_kwargs()
+        producer = AIOKafkaProducer(**kafka_kwargs)
         consumer = AIOKafkaConsumer(
             "features.norm",
-            bootstrap_servers=KAFKA,
+            **kafka_kwargs,
             group_id="agent-service",
             auto_offset_reset="latest",
         )
