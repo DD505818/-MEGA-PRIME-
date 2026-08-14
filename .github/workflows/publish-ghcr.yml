@@ -62,10 +62,10 @@ jobs:
         with:
           context: ${{ matrix.context }}
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/omega-prime-${{ matrix.name }}:${{ github.sha }}
+          tags: ghcr.io/dd505818/omega-prime-${{ matrix.name }}:${{ env.IMAGE_TAG }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.revision=${{ env.IMAGE_TAG }}
             org.opencontainers.image.title=omega-prime-${{ matrix.name }}
           provenance: mode=max
           sbom: true
