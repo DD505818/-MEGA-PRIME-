@@ -22,12 +22,13 @@ jobs:
         with:
           version: v1.31.4
       - name: Render production overlay
-        run: kubectl kustomize infra/kubernetes/overlays/production > /tmp/omega-production.yaml
-      - name: Reject unresolved image tags
+        run: kubectl kustomize infra/kubernetes/overlays/production > omega-production.yaml
+      - name: Reject mutable production image tags
         run: |
-          if grep -E 'image: .*:(latest|main|master)$' /tmp/omega-production.yaml; then
+          if grep -E 'image: .*:(latest|main|master)$' omega-production.yaml; then
             echo "Mutable production image tag detected"
             exit 1
           fi
-      - name: Client-side schema validation
-        run: kubectl apply --dry-run=client -f /tmp/omega-production.yaml
+      - name: Validate Kubernetes schemas
+        run: |
+          docker run --rm -v "$PWD:/work" ghcr.io/yannh/kubeconform:v0.6.7             -strict -summary -kubernetes-version 1.31.0 /work/omega-production.yaml
