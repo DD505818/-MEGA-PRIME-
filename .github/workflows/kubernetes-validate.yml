@@ -1,0 +1,33 @@
+name: Kubernetes manifests
+
+on:
+  pull_request:
+    paths:
+      - "infra/kubernetes/**"
+      - ".github/workflows/kubernetes-validate.yml"
+  push:
+    branches: [main]
+    paths:
+      - "infra/kubernetes/**"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: v1.31.4
+      - name: Render production overlay
+        run: kubectl kustomize infra/kubernetes/overlays/production > /tmp/omega-production.yaml
+      - name: Reject unresolved image tags
+        run: |
+          if grep -E 'image: .*:(latest|main|master)$' /tmp/omega-production.yaml; then
+            echo "Mutable production image tag detected"
+            exit 1
+          fi
+      - name: Client-side schema validation
+        run: kubectl apply --dry-run=client -f /tmp/omega-production.yaml
