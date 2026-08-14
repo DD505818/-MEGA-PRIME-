@@ -98,3 +98,58 @@ metadata: {name: capital-allocator, namespace: omega-prime}
 spec:
   selector: {app.kubernetes.io/name: capital-allocator}
   ports: [{name: http, port: 8082, targetPort: http}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fusion-engine
+  namespace: omega-prime
+  labels: {app.kubernetes.io/name: fusion-engine, app.kubernetes.io/part-of: omega-prime}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app.kubernetes.io/name: fusion-engine}}
+  template:
+    metadata: {labels: {app.kubernetes.io/name: fusion-engine, app.kubernetes.io/part-of: omega-prime}}
+    spec:
+      serviceAccountName: omega-runtime
+      securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: fusion-engine
+          image: ghcr.io/dd505818/omega-prime/fusion-engine:db1f614a8cc6a76326434f10be49b590d2afbba8
+          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-production}}]
+          ports: [{name: http, containerPort: 8085}]
+          readinessProbe: {tcpSocket: {port: http}, periodSeconds: 5}
+          livenessProbe: {tcpSocket: {port: http}, initialDelaySeconds: 15}
+          resources: {requests: {cpu: 100m, memory: 128Mi}, limits: {cpu: "1", memory: 512Mi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: fusion-engine, namespace: omega-prime}
+spec:
+  selector: {app.kubernetes.io/name: fusion-engine}
+  ports: [{name: http, port: 8085, targetPort: http}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-service
+  namespace: omega-prime
+  labels: {app.kubernetes.io/name: llm-service, app.kubernetes.io/part-of: omega-prime}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app.kubernetes.io/name: llm-service}}
+  template:
+    metadata: {labels: {app.kubernetes.io/name: llm-service, app.kubernetes.io/part-of: omega-prime}}
+    spec:
+      serviceAccountName: omega-runtime
+      securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: llm-service
+          image: ghcr.io/dd505818/omega-prime/llm-service:db1f614a8cc6a76326434f10be49b590d2afbba8
+          env: [{name: PYTHONDONTWRITEBYTECODE, value: "1"}]
+          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-production}}]
+          resources: {requests: {cpu: 100m, memory: 256Mi}, limits: {cpu: "1", memory: 1Gi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {sizeLimit: 128Mi}}]
