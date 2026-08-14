@@ -1,0 +1,65 @@
+name: Publish immutable GHCR images
+
+on:
+  push:
+    branches:
+      - codex/kubernetes-production-manifests
+    paths:
+      - "apps/**"
+      - ".github/workflows/publish-ghcr.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: ghcr-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - {name: market-data-service, context: apps/market-data-service}
+          - {name: feature-engine, context: apps/feature-engine}
+          - {name: agent-service, context: apps/agent-service}
+          - {name: fusion-engine, context: apps/fusion-engine}
+          - {name: risk-service, context: apps/risk-service}
+          - {name: execution-service, context: apps/execution-service}
+          - {name: capital-allocator, context: apps/capital-allocator}
+          - {name: portfolio-service, context: apps/portfolio-service}
+          - {name: truth-core, context: apps/truth-core}
+          - {name: llm-service, context: apps/llm-service}
+          - {name: websocket-gateway, context: apps/websocket-gateway}
+          - {name: web-ui, context: apps/web-ui}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Sign in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and publish ${{ matrix.name }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/omega-prime-${{ matrix.name }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.title=omega-prime-${{ matrix.name }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
