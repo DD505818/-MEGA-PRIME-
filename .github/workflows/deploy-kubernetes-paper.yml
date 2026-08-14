@@ -1,0 +1,78 @@
+name: Deploy Kubernetes PAPER
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: omega-paper-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment: paper
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      KAFKA_BROKERS: ${{ secrets.KAFKA_BROKERS }}
+      KAFKA_SASL_USERNAME: ${{ secrets.KAFKA_SASL_USERNAME }}
+      KAFKA_SASL_PASSWORD: ${{ secrets.KAFKA_SASL_PASSWORD }}
+      REDIS_URL: ${{ secrets.REDIS_URL }}
+      POSTGRES_DSN: ${{ secrets.POSTGRES_DSN }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      KAFKA_EGRESS_CIDR: ${{ vars.KAFKA_EGRESS_CIDR }}
+      REDIS_EGRESS_CIDR: ${{ vars.REDIS_EGRESS_CIDR }}
+      POSTGRES_EGRESS_CIDR: ${{ vars.POSTGRES_EGRESS_CIDR }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: v1.31.4
+      - name: Validate fail-closed TLS configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAFKA_BROKERS"
+          test -n "$KAFKA_SASL_USERNAME"
+          test -n "$KAFKA_SASL_PASSWORD"
+          test -n "$JWT_SECRET"
+          [[ "$REDIS_URL" == rediss://* ]]
+          [[ "$POSTGRES_DSN" == *"sslmode=require"* || "$POSTGRES_DSN" == *"sslmode=verify-full"* ]]
+          python3 - <<'PY'
+          import ipaddress, os
+          for key in ("KAFKA_EGRESS_CIDR", "REDIS_EGRESS_CIDR", "POSTGRES_EGRESS_CIDR"):
+              value = os.environ.get(key, "")
+              network = ipaddress.ip_network(value, strict=False)
+              if network.prefixlen == 0:
+                  raise SystemExit(f"{key} must not allow the entire internet")
+          PY
+      - name: Configure cluster access
+        env:
+          KUBE_CONFIG_B64: ${{ secrets.KUBE_CONFIG_B64 }}
+        run: |
+          test -n "$KUBE_CONFIG_B64"
+          install -m 0700 -d "$HOME/.kube"
+          printf '%s' "$KUBE_CONFIG_B64" | base64 --decode > "$HOME/.kube/config"
+          chmod 0600 "$HOME/.kube/config"
+          kubectl auth can-i create deployments -n omega-prime
+      - name: Create TLS service credential secret
+        run: |
+          kubectl create namespace omega-prime --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n omega-prime create secret generic omega-production             --from-literal=KAFKA_BROKERS="$KAFKA_BROKERS"             --from-literal=KAFKA_SECURITY_PROTOCOL="SASL_SSL"             --from-literal=KAFKA_SASL_MECHANISM="PLAIN"             --from-literal=KAFKA_SASL_USERNAME="$KAFKA_SASL_USERNAME"             --from-literal=KAFKA_SASL_PASSWORD="$KAFKA_SASL_PASSWORD"             --from-literal=REDIS_URL="$REDIS_URL"             --from-literal=POSTGRES_DSN="$POSTGRES_DSN"             --from-literal=JWT_SECRET="$JWT_SECRET"             --from-literal=GROQ_API_KEY="$GROQ_API_KEY"             --dry-run=client -o yaml | kubectl apply -f -
+      - name: Render exact managed-service egress
+        run: |
+          envsubst < infra/kubernetes/overlays/production/managed-egress.yaml.tpl             > /tmp/managed-egress.yaml
+          kubectl apply --dry-run=server -f /tmp/managed-egress.yaml
+      - name: Deploy PAPER-only workloads
+        env:
+          PAPER_MODE: "true"
+          LIVE_TRADING_ENABLED: "false"
+          TRADING_MODE: "PAPER"
+        run: |
+          kubectl apply -k infra/kubernetes/overlays/production
+          kubectl apply -f /tmp/managed-egress.yaml
+          kubectl -n omega-prime rollout status deployment --timeout=10m
+          test "$(kubectl -n omega-prime get configmap omega-runtime -o jsonpath='{.data.LIVE_TRADING_ENABLED}')" = "false"
