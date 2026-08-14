@@ -23,7 +23,7 @@ func newRedisClient(rawURL string) *redis.Client {
 	return redis.NewClient(&redis.Options{Addr: rawURL})
 }
 
-func withKafkaTransport(config kafka.ConfigMap) kafka.ConfigMap {
+func kafkaTransport(config kafka.ConfigMap) *kafka.ConfigMap {
 	copyEnv := func(envKey, configKey string) {
 		if value := os.Getenv(envKey); value != "" {
 			config[configKey] = value
@@ -34,5 +34,5 @@ func withKafkaTransport(config kafka.ConfigMap) kafka.ConfigMap {
 	copyEnv("KAFKA_SASL_USERNAME", "sasl.username")
 	copyEnv("KAFKA_SASL_PASSWORD", "sasl.password")
 	copyEnv("KAFKA_SSL_CA_LOCATION", "ssl.ca.location")
-	return config
+	return &config
 }
