@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"sync"
 	"time"
 
@@ -50,14 +49,13 @@ type PortfolioService struct {
 }
 
 func NewPortfolioService(redisAddr, brokers, pgDSN string) *PortfolioService {
-	addr := strings.TrimPrefix(redisAddr, "redis://")
-	rdb := redis.NewClient(&redis.Options{Addr: addr})
+	rdb := newRedisClient(redisAddr)
 
-	c, err := kafka.NewConsumer(&kafka.ConfigMap{
+	c, err := kafka.NewConsumer(kafkaTransport(kafka.ConfigMap{
 		"bootstrap.servers": brokers,
 		"group.id":          "portfolio-service",
 		"auto.offset.reset": "latest",
-	})
+	}))
 	if err != nil {
 		log.Fatalf("portfolio kafka: %v", err)
 	}
