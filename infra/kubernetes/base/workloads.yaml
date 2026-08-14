@@ -14,7 +14,7 @@ spec:
       securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: risk-service
-          image: ghcr.io/dd505818/omega-prime/risk-service:db1f614a8cc6a76326434f10be49b590d2afbba8
+          image: ghcr.io/dd505818/omega-prime-risk-service@sha256:e8c9d6d0bbf7d7cee5943a5645ae0b29cffd3dfd6db224c2a8b2827eaa478aa4
           imagePullPolicy: IfNotPresent
           envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-kafka}}, {secretRef: {name: omega-redis}}]
           ports: [{name: http, containerPort: 8080}]
@@ -47,7 +47,7 @@ spec:
       securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: execution-service
-          image: ghcr.io/dd505818/omega-prime/execution-service:db1f614a8cc6a76326434f10be49b590d2afbba8
+          image: ghcr.io/dd505818/omega-prime-execution-service@sha256:b84da9e123de44da34aab92728d8f2fac620cfb06b6d04a1f639a1099226f11d
           envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-kafka}}, {secretRef: {name: omega-redis}}]
           ports: [{name: http, containerPort: 8081}]
           readinessProbe: {httpGet: {path: /health/ready, port: http}, timeoutSeconds: 5, periodSeconds: 5, failureThreshold: 3}
@@ -79,7 +79,7 @@ spec:
       securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: portfolio-service
-          image: ghcr.io/dd505818/omega-prime/portfolio-service:db1f614a8cc6a76326434f10be49b590d2afbba8
+          image: ghcr.io/dd505818/omega-prime-portfolio-service@sha256:4ea202afac89473dc30478b9bc50cd0883894fd4b24c7eacd287d70ea1ecac1a
           envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-kafka}}, {secretRef: {name: omega-redis}}, {secretRef: {name: omega-postgres}}]
           ports: [{name: http, containerPort: 8083}]
           readinessProbe: {httpGet: {path: /health/ready, port: http}, timeoutSeconds: 5, periodSeconds: 5, failureThreshold: 3}
@@ -110,7 +110,7 @@ spec:
       securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: truth-core
-          image: ghcr.io/dd505818/omega-prime/truth-core:db1f614a8cc6a76326434f10be49b590d2afbba8
+          image: ghcr.io/dd505818/omega-prime-truth-core@sha256:6f46f066b598bac9fad73b1a9d366d0ef68fcc8b39cacd0ca18f4ac92e44e5a1
           envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-postgres}}]
           ports: [{name: http, containerPort: 8084}]
           readinessProbe: {httpGet: {path: /health/ready, port: http}, timeoutSeconds: 5, periodSeconds: 5, failureThreshold: 3}
@@ -142,7 +142,7 @@ spec:
       securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: websocket-gateway
-          image: ghcr.io/dd505818/omega-prime/websocket-gateway:db1f614a8cc6a76326434f10be49b590d2afbba8
+          image: ghcr.io/dd505818/omega-prime-websocket-gateway@sha256:7137882a20813180d519a66d6c72350d74b697849e3cc15bb923d4213dd9d421
           envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-kafka}}, {secretRef: {name: omega-redis}}, {secretRef: {name: omega-websocket}}]
           env: [{name: PORT, value: "3001"}]
           ports: [{name: http, containerPort: 3001}]
@@ -176,7 +176,7 @@ spec:
       securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: web-ui
-          image: ghcr.io/dd505818/omega-prime/web-ui:db1f614a8cc6a76326434f10be49b590d2afbba8
+          image: ghcr.io/dd505818/omega-prime-web-ui@sha256:dae4a4030e64885dbf97e13a85e8c0ddb588aa058e2b2e31792c3924e1d75f22
           ports: [{name: http, containerPort: 3000}]
           readinessProbe: {httpGet: {path: /health/ready, port: http}, timeoutSeconds: 5, periodSeconds: 5, failureThreshold: 3}
           livenessProbe: {httpGet: {path: /health/live, port: http}, timeoutSeconds: 5, initialDelaySeconds: 15, periodSeconds: 10}

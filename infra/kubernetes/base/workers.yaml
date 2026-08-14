@@ -14,7 +14,7 @@ spec:
       securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: market-data-service
-          image: ghcr.io/dd505818/omega-prime/market-data-service:db1f614a8cc6a76326434f10be49b590d2afbba8
+          image: ghcr.io/dd505818/omega-prime-market-data-service@sha256:d74e274cb03021ec4e034921450df02bb73b3577d9465018c53b4767b1c20e77
           envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-kafka}}]
           ports: [{name: http, containerPort: 8090}]
           readinessProbe: {httpGet: {path: /health/ready, port: http}, timeoutSeconds: 5, periodSeconds: 5, failureThreshold: 3}
@@ -39,7 +39,7 @@ spec:
       securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: feature-engine
-          image: ghcr.io/dd505818/omega-prime/feature-engine:db1f614a8cc6a76326434f10be49b590d2afbba8
+          image: ghcr.io/dd505818/omega-prime-feature-engine@sha256:fbfa2e690c9a4012623a1ac42473d1cb0cb4e8803c39291c27ae4f9e4ea147b6
           env: [{name: PYTHONDONTWRITEBYTECODE, value: "1"}]
           envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-kafka}}, {secretRef: {name: omega-redis}}]
           ports: [{name: http, containerPort: 8090}]
@@ -66,7 +66,7 @@ spec:
       securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: agent-service
-          image: ghcr.io/dd505818/omega-prime/agent-service:db1f614a8cc6a76326434f10be49b590d2afbba8
+          image: ghcr.io/dd505818/omega-prime-agent-service@sha256:80dbdcdbfe5cdf9f5901b0cfbf1d77c120ba2e73b4bcd4dd0e15d556f2996b48
           env: [{name: PYTHONDONTWRITEBYTECODE, value: "1"}]
           envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-kafka}}]
           ports: [{name: http, containerPort: 8090}]
@@ -93,7 +93,7 @@ spec:
       securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: capital-allocator
-          image: ghcr.io/dd505818/omega-prime/capital-allocator:db1f614a8cc6a76326434f10be49b590d2afbba8
+          image: ghcr.io/dd505818/omega-prime-capital-allocator@sha256:a0846844ff60f6a9130289f6fe8f32ceb068b28a0193348302b387eb3a5356f9
           envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-kafka}}, {secretRef: {name: omega-redis}}]
           ports: [{name: http, containerPort: 8082}]
           readinessProbe: {httpGet: {path: /health/ready, port: http}, timeoutSeconds: 5, periodSeconds: 5, failureThreshold: 3}
@@ -124,7 +124,7 @@ spec:
       securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: fusion-engine
-          image: ghcr.io/dd505818/omega-prime/fusion-engine:db1f614a8cc6a76326434f10be49b590d2afbba8
+          image: ghcr.io/dd505818/omega-prime-fusion-engine@sha256:6d57a69a92adcf7414829c9f56ec039e8a0d0812a2fe2e32d18029423c302d63
           envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-kafka}}, {secretRef: {name: omega-redis}}]
           ports: [{name: http, containerPort: 8085}]
           readinessProbe: {httpGet: {path: /health/ready, port: http}, timeoutSeconds: 5, periodSeconds: 5, failureThreshold: 3}
@@ -155,7 +155,7 @@ spec:
       securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: llm-service
-          image: ghcr.io/dd505818/omega-prime/llm-service:db1f614a8cc6a76326434f10be49b590d2afbba8
+          image: ghcr.io/dd505818/omega-prime-llm-service@sha256:e13906ac6dd0401c1012c1d4bcfd177cd6ea3290a90dc819ba79d6f3ef43d99e
           env: [{name: PYTHONDONTWRITEBYTECODE, value: "1"}]
           envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-kafka}}, {secretRef: {name: omega-redis}}, {secretRef: {name: omega-llm}}]
           ports: [{name: http, containerPort: 8090}]
