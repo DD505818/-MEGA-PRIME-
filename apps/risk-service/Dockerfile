@@ -3,6 +3,7 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
+RUN go mod tidy && go mod verify
 RUN CGO_ENABLED=0 go build -o risk-service .
 FROM alpine:3.19
 COPY --from=builder /app/risk-service /usr/local/bin/
