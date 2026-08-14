@@ -7,15 +7,32 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"time"
 
 	"github.com/google/uuid"
 )
 
 var engine *RiskEngine
 
-func healthHandler(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(200)
-	w.Write([]byte(`{"status":"ok"}`))
+func liveHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(`{"status":"live"}`))
+}
+
+func readyHandler(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+	if err := engine.redis.Ping(ctx).Err(); err != nil {
+		http.Error(w, `{"status":"not_ready","dependency":"redis"}`, http.StatusServiceUnavailable)
+		return
+	}
+	if _, err := engine.producer.GetMetadata(nil, true, 2000); err != nil {
+		http.Error(w, `{"status":"not_ready","dependency":"kafka"}`, http.StatusServiceUnavailable)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write([]byte(`{"status":"ready"}`))
 }
 
 func validateHandler(w http.ResponseWriter, r *http.Request) {
@@ -68,7 +85,9 @@ func main() {
 	go engine.run()
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/health", healthHandler)
+	mux.HandleFunc("/health", liveHandler)
+	mux.HandleFunc("/health/live", liveHandler)
+	mux.HandleFunc("/health/ready", readyHandler)
 	mux.HandleFunc("/validate", validateHandler)
 	mux.HandleFunc("/kill", killHandler)
 	mux.HandleFunc("/reset", resetHandler)
