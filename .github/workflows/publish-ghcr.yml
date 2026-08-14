@@ -1,6 +1,10 @@
 name: Publish immutable GHCR images
 
 on:
+  pull_request:
+    paths:
+      - "apps/**"
+      - ".github/workflows/publish-ghcr.yml"
   push:
     branches:
       - codex/kubernetes-production-manifests
