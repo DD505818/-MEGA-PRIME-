@@ -101,6 +101,13 @@ func (tc *TruthCore) Append(ctx context.Context, eventType string, payload inter
 	}
 	defer tx.Rollback(ctx)
 
+	// Hash the exact canonical representation PostgreSQL stores and later returns.
+	var canonicalPayload []byte
+	if err := tx.QueryRow(ctx, `SELECT $1::jsonb`, string(payloadBytes)).Scan(&canonicalPayload); err != nil {
+		return nil, fmt.Errorf("canonicalize payload: %w", err)
+	}
+	payloadBytes = canonicalPayload
+
 	// Read the last row's hash under an exclusive lock to prevent races.
 	var prevHash string
 	row := tx.QueryRow(ctx,
@@ -207,14 +214,14 @@ func (tc *TruthCore) appendHandler(w http.ResponseWriter, r *http.Request) {
 func (tc *TruthCore) verifyHandler(w http.ResponseWriter, r *http.Request) {
 	count, err := tc.VerifyChain(r.Context())
 	resp := map[string]interface{}{"verified_entries": count}
+	w.Header().Set("Content-Type", "application/json")
 	if err != nil {
 		resp["error"] = err.Error()
 		resp["valid"] = false
-		w.WriteHeader(409)
+		w.WriteHeader(http.StatusConflict)
 	} else {
 		resp["valid"] = true
 	}
-	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }
 
