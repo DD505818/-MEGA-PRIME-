@@ -7,6 +7,11 @@ on:
         description: "Type PAPER to confirm this is a non-LIVE dashboard deployment"
         required: true
         default: "PAPER"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/deploy-triggers/cloudflare-paper"
 
 permissions:
   contents: read
@@ -46,7 +51,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "${{ inputs.confirm_mode }}" = "PAPER"
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            test "${{ inputs.confirm_mode }}" = "PAPER"
+          fi
           test "$PAPER_MODE" = "true"
           test "$TRADING_MODE" = "PAPER"
           test "$LIVE_TRADING_ENABLED" = "false"
