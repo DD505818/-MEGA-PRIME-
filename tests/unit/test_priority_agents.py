@@ -1,13 +1,13 @@
+from pathlib import Path
+import sys
+
 import numpy as np
 import pandas as pd
 
-from apps.agent_service.strategies.gap import GAP
-from apps.agent_service.strategies.rev import REV
-from apps.agent_service.strategies.senti import SENTI
-from apps.agent_service.strategies.twin import TWIN
-from apps.agent_service.strategies.maker import MAKER
-from apps.agent_service.strategies.harvest import HARVEST
-from apps.agent_service.strategies import create_active_agents
+AGENT_SERVICE_DIR = Path(__file__).resolve().parents[2] / "apps" / "agent-service"
+sys.path.insert(0, str(AGENT_SERVICE_DIR))
+
+from strategies import GAP, HARVEST, MAKER, REV, SENTI, TWIN, create_active_agents  # noqa: E402
 
 
 def daily_df(rows=80, start=100.0, step=0.2):

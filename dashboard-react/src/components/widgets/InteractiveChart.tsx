@@ -1,27 +1,27 @@
 import { useEffect, useRef, useState } from 'react'
-import { createChart, ColorType, CrosshairMode } from 'lightweight-charts'
+import { createChart, ColorType, CrosshairMode, type CandlestickData, type UTCTimestamp } from 'lightweight-charts'
 import { useAppStore } from '../../store/useAppStore'
 
 const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1D']
 const SYMBOLS = ['BTC/USD', 'ETH/USD', 'SOL/USD', 'AVAX/USD']
 
-function generateCandles(symbol: string, count = 100) {
+function generateCandles(symbol: string, count = 100): CandlestickData<UTCTimestamp>[] {
   const base: Record<string, number> = { 'BTC/USD': 64231, 'ETH/USD': 3142, 'SOL/USD': 172, 'AVAX/USD': 38 }
   let price = base[symbol] ?? 100
   const now = Math.floor(Date.now() / 1000)
   return Array.from({ length: count }, (_, i) => {
-    const open  = price
+    const open = price
     const close = price * (1 + (Math.random() - 0.48) * 0.012)
-    const high  = Math.max(open, close) * (1 + Math.random() * 0.005)
-    const low   = Math.min(open, close) * (1 - Math.random() * 0.005)
+    const high = Math.max(open, close) * (1 + Math.random() * 0.005)
+    const low = Math.min(open, close) * (1 - Math.random() * 0.005)
     price = close
-    return { time: now - (count - i) * 60, open, high, low, close, value: Math.random() * 10 + 1 }
+    return { time: (now - (count - i) * 60) as UTCTimestamp, open, high, low, close }
   })
 }
 
 export function InteractiveChart() {
-  const chartRef  = useRef<HTMLDivElement>(null)
-  const chartObj  = useRef<ReturnType<typeof createChart> | null>(null)
+  const chartRef = useRef<HTMLDivElement>(null)
+  const chartObj = useRef<ReturnType<typeof createChart> | null>(null)
   const candleSeries = useRef<any>(null)
   const [symbol, setSymbol] = useState('BTC/USD')
   const [tf, setTf] = useState('1m')
@@ -55,9 +55,9 @@ export function InteractiveChart() {
     const mid = (pdh + pdl) / 2
 
     ;[
-      { price: pdh, color: '#6dbbff', title: 'PDH', dashed: false },
-      { price: mid, color: '#9fb0cc', title: 'MID', dashed: true },
-      { price: pdl, color: '#ffc27a', title: 'PDL', dashed: false },
+      { price: pdh, color: '#6dbbff', title: 'PDH' },
+      { price: mid, color: '#9fb0cc', title: 'MID' },
+      { price: pdl, color: '#ffc27a', title: 'PDL' },
     ].forEach(({ price, color, title }) => {
       candles.createPriceLine({ price, color, lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title })
     })
@@ -73,7 +73,7 @@ export function InteractiveChart() {
   useEffect(() => {
     const tick = ticks[symbol]
     if (!tick || !candleSeries.current) return
-    const t = Math.floor(tick.ts)
+    const t = Math.floor(tick.ts) as UTCTimestamp
     candleSeries.current.update({ time: t, open: tick.bid, high: tick.ask, low: tick.bid * 0.9999, close: tick.price })
   }, [ticks, symbol])
 
