@@ -55,6 +55,12 @@ jobs:
           severity: CRITICAL,HIGH
           exit-code: '1'
 
+      - name: Print Trivy findings
+        if: ${{ always() && hashFiles('trivy-results.sarif') != '' }}
+        shell: bash
+        run: |
+          jq -r '.runs[].results[]? | [.ruleId, (.level // ""), (.message.text // ""), (.locations[0].physicalLocation.artifactLocation.uri // "")] | @tsv' trivy-results.sarif
+
       - name: Upload Trivy SARIF
         if: ${{ always() && hashFiles('trivy-results.sarif') != '' }}
         uses: github/codeql-action/upload-sarif@v4
@@ -62,12 +68,20 @@ jobs:
           sarif_file: trivy-results.sarif
 
       - name: Install Grype
+        if: always()
         run: |
           curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
 
       - name: Scan image with Grype
+        if: always()
         run: |
           grype omega-prime/risk-engine:test --fail-on high --output sarif > grype-results.sarif
+
+      - name: Print Grype findings
+        if: ${{ always() && hashFiles('grype-results.sarif') != '' }}
+        shell: bash
+        run: |
+          jq -r '.runs[].results[]? | [.ruleId, (.level // ""), (.message.text // ""), (.locations[0].physicalLocation.artifactLocation.uri // "")] | @tsv' grype-results.sarif
 
       - name: Upload Grype SARIF
         if: ${{ always() && hashFiles('grype-results.sarif') != '' }}
