@@ -101,6 +101,8 @@ Deployment-Tools/
 ├── docker-compose.source.yml
 ├── docker-compose.package.yml
 ├── .env.example
+├── cloudflare/
+│   └── omegaaa-companion.txt
 ├── infra/
 │   └── db-migrations/
 ├── infrastructure/
@@ -122,10 +124,26 @@ The package also carries:
 - Terraform
 - monitoring configuration
 - Kafka infrastructure configuration
-- Helm chart
+- normalized Helm chart
 - GitHub Actions definitions
 - deployment/verification scripts
 - safe `.env.example`
+
+### Cloudflare edge companion
+
+The public Workers/Workers AI edge remains a separately deployed companion repository rather than being copied into this monorepo artifact:
+
+```text
+repository: DD505818/omegaaa
+pinned commit: a8fe606ec4f4f8539baf26321b521b80e1db5d1a
+role: REST API + Workers AI streaming edge
+mode: PAPER
+execution authority: none
+```
+
+The package writes this pin to `Deployment-Tools/cloudflare/omegaaa-companion.txt` and to `PACKAGE_INFO.txt`. Keeping the companion repo separate avoids an implicit cross-repository supply-chain fetch during packaging while still making the deployment dependency explicit and reproducible.
+
+The Cloudflare edge must keep `LIVE_TRADING_ENABLED=false`, and its protected AI routes require `OMEGA_API_TOKEN`. It must not contain broker credentials, wallet signing material, or an AEGIS bypass.
 
 ## Build the package
 
@@ -149,11 +167,13 @@ The builder:
 1. verifies all required source paths exist;
 2. copies only the mapped source trees;
 3. excludes local environments, caches, VCS metadata, private-key files, credentials files, and build output;
-4. rewrites only the packaged Docker Compose copy so its build contexts resolve inside the categorized artifact;
-5. scans the staged files for common high-risk secret formats;
-6. records the source commit and PAPER-only release posture;
-7. creates SHA-256 checksums;
-8. emits compressed deployment artifacts.
+4. normalizes the Helm chart into the deployment-facing layout;
+5. rewrites only the packaged Docker Compose copy so its build contexts resolve inside the categorized artifact;
+6. pins the separately deployed Cloudflare edge companion;
+7. scans the staged files for common high-risk secret formats;
+8. records the source commit and PAPER-only release posture;
+9. creates SHA-256 checksums;
+10. emits compressed deployment artifacts.
 
 ## Run the categorized Docker package
 
@@ -182,6 +202,7 @@ No AI-to-execution bypass
 No AEGIS bypass
 No unverified blockchain execution claim
 No audit/reconciliation bypass
+Cloudflare edge remains advisory/API-only
 ```
 
 The artifact is a delivery mechanism. It does not itself certify LIVE readiness.
