@@ -38,7 +38,7 @@ jobs:
       - name: Commit generated lockfile
         shell: bash
         run: |
-          if git diff --quiet -- dashboard-react/package-lock.json; then
+          if [[ -z "$(git status --porcelain -- dashboard-react/package-lock.json)" ]]; then
             echo "Lockfile already current."
             exit 0
           fi
