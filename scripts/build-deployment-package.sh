@@ -7,6 +7,9 @@ PACKAGE_NAME="Omega-Prime-Deployment"
 STAGE="$OUT_DIR/$PACKAGE_NAME"
 SHORT_SHA="$(git -C "$ROOT" rev-parse --short=12 HEAD)"
 SOURCE_SHA="$(git -C "$ROOT" rev-parse HEAD)"
+HELM_SOURCE="omega-prime-delta/infrastructure/helm/omega-prime-delta"
+CLOUDFLARE_EDGE_REPOSITORY="DD505818/omegaaa"
+CLOUDFLARE_EDGE_COMMIT="a8fe606ec4f4f8539baf26321b521b80e1db5d1a"
 
 CORE_PATHS=(
   "apps/agent-service"
@@ -39,7 +42,6 @@ DEPLOYMENT_PATHS=(
   "infrastructure/kubernetes"
   "infrastructure/monitoring"
   "infrastructure/terraform"
-  "omega-prime-delta/infrastructure/helm/omega-prime-delta"
   "scripts"
 )
 
@@ -138,6 +140,11 @@ copy_group "Backend-Services" "${BACKEND_PATHS[@]}"
 copy_group "Dashboard-UI" "${DASHBOARD_PATHS[@]}"
 copy_group "Deployment-Tools" "${DEPLOYMENT_PATHS[@]}"
 
+# Flatten the legacy nested Helm source path into the deployment-facing layout.
+require_path "$HELM_SOURCE"
+mkdir -p "$STAGE/Deployment-Tools/helm/omega-prime-delta"
+rsync -a "${RSYNC_EXCLUDES[@]}" "$ROOT/$HELM_SOURCE/" "$STAGE/Deployment-Tools/helm/omega-prime-delta/"
+
 # Preserve current CI/CD definitions as deployment evidence/configuration.
 mkdir -p "$STAGE/Deployment-Tools/github-workflows"
 require_path ".github/workflows"
@@ -166,12 +173,27 @@ sed \
   -e 's#build: \./apps/web-ui#build: ../Dashboard-UI/apps/web-ui#' \
   "$ROOT/docker-compose.yml" > "$STAGE/Deployment-Tools/docker-compose.package.yml"
 
+# Pin the separately deployed Cloudflare Worker instead of importing another repo at build time.
+mkdir -p "$STAGE/Deployment-Tools/cloudflare"
+cat > "$STAGE/Deployment-Tools/cloudflare/omegaaa-companion.txt" <<EOF
+ΩMEGA PRIME Δ Cloudflare edge companion
+repository=$CLOUDFLARE_EDGE_REPOSITORY
+pinned_commit=$CLOUDFLARE_EDGE_COMMIT
+role=public REST API + Workers AI inference edge
+release_mode=PAPER
+live_trading_enabled=false
+execution_authority=false
+required_secret=OMEGA_API_TOKEN
+EOF
+
 cp "$ROOT/DEPLOYMENT_PACKAGE.md" "$STAGE/README.md"
 
 cat > "$STAGE/PACKAGE_INFO.txt" <<EOF
 ΩMEGA PRIME Δ deployment package
 source_repository=DD505818/-MEGA-PRIME-
 source_commit=$SOURCE_SHA
+cloudflare_edge_repository=$CLOUDFLARE_EDGE_REPOSITORY
+cloudflare_edge_commit=$CLOUDFLARE_EDGE_COMMIT
 release_mode=PAPER
 paper_mode_required=true
 live_trading_enabled=false
