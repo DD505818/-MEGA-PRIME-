@@ -2,11 +2,6 @@ name: Deploy Kubernetes PAPER
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/deploy-triggers/kubernetes-paper"
 
 permissions:
   contents: read
