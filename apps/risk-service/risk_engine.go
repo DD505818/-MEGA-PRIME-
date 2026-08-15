@@ -41,20 +41,19 @@ type RiskEngine struct {
 }
 
 func NewRiskEngine(redisAddr, brokers string) *RiskEngine {
-	addr := strings.TrimPrefix(redisAddr, "redis://")
-	rdb := redis.NewClient(&redis.Options{Addr: addr})
+	rdb := newRedisClient(redisAddr)
 
-	c, err := kafka.NewConsumer(&kafka.ConfigMap{
+	c, err := kafka.NewConsumer(kafkaTransport(kafka.ConfigMap{
 		"bootstrap.servers": brokers,
 		"group.id":          "risk-engine",
 		"auto.offset.reset": "latest",
-	})
+	}))
 	if err != nil {
 		log.Fatalf("kafka consumer: %v", err)
 	}
 	c.SubscribeTopics([]string{"signals.raw"}, nil)
 
-	p, err := kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": brokers})
+	p, err := kafka.NewProducer(kafkaTransport(kafka.ConfigMap{"bootstrap.servers": brokers}))
 	if err != nil {
 		log.Fatalf("kafka producer: %v", err)
 	}

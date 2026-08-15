@@ -31,7 +31,7 @@ services:
       retries: 10
 
   redis:
-    image: redis:7-alpine
+    image: redis:7.2.5-alpine
     ports:
       - "6379:6379"
     command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
@@ -41,7 +41,7 @@ services:
       retries: 5
 
   postgres:
-    image: timescale/timescaledb:latest-pg16
+    image: postgres:16.4-alpine
     ports:
       - "5432:5432"
     environment:
@@ -123,6 +123,7 @@ services:
       REDIS_URL: redis://redis:6379
       POSTGRES_DSN: ${POSTGRES_DSN:-postgresql://postgres:omega@postgres:5432/omega}
       PAPER_MODE: ${PAPER_MODE:-true}
+      LIVE_TRADING_ENABLED: ${LIVE_TRADING_ENABLED:-false}
       MAX_DAILY_LOSS: ${MAX_DAILY_LOSS:-0.02}
       MAX_DRAWDOWN: ${MAX_DRAWDOWN:-0.10}
       MAX_POSITIONS: ${MAX_POSITIONS:-8}
@@ -148,6 +149,8 @@ services:
       KAFKA_BROKERS: kafka:9092
       REDIS_URL: redis://redis:6379
       PAPER_MODE: ${PAPER_MODE:-true}
+      PAPER_DETERMINISTIC: ${PAPER_DETERMINISTIC:-true}
+      LIVE_TRADING_ENABLED: ${LIVE_TRADING_ENABLED:-false}
     ports:
       - "8081:8081"
     restart: unless-stopped
@@ -181,6 +184,7 @@ services:
       KAFKA_BROKERS: kafka:9092
       REDIS_URL: redis://redis:6379
       POSTGRES_DSN: ${POSTGRES_DSN:-postgresql://postgres:omega@postgres:5432/omega}
+      PORTFOLIO_EQUITY: ${PORTFOLIO_EQUITY:-2000}
     ports:
       - "8083:8083"
     restart: unless-stopped

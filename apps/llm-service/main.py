@@ -12,6 +12,8 @@ from typing import Optional
 import redis.asyncio as aioredis
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 import httpx
+from health import HealthState, start_health_server
+from transport import kafka_client_kwargs
 
 log = logging.getLogger("llm-service")
 logging.basicConfig(level=logging.INFO)
@@ -21,6 +23,7 @@ GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 KAFKA = os.getenv("KAFKA_BROKERS", "kafka:9092")
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379")
+health = HealthState()
 
 SYSTEM_PROMPT = """You are ΩMEGA PRIME Δ, an elite algorithmic trading AI.
 Explain trading signals in 1-2 sentences: what the signal is, why it triggered,
@@ -54,15 +57,18 @@ async def explain_signal(signal: dict, client: httpx.AsyncClient) -> Optional[st
 
 async def main():
     rdb = aioredis.from_url(REDIS_URL)
-    producer = AIOKafkaProducer(bootstrap_servers=KAFKA)
+    kafka_kwargs = kafka_client_kwargs()
+    producer = AIOKafkaProducer(**kafka_kwargs)
     consumer = AIOKafkaConsumer(
         "signals.approved",
-        bootstrap_servers=KAFKA,
+        **kafka_kwargs,
         group_id="llm-service",
         auto_offset_reset="latest",
     )
     await producer.start()
     await consumer.start()
+    await rdb.ping()
+    health.ready()
 
     async with httpx.AsyncClient() as client:
         async for msg in consumer:
@@ -80,9 +86,12 @@ async def main():
             except Exception as exc:
                 log.error("LLM service error: %s", exc)
 
+    health.not_ready("shutdown")
     await consumer.stop()
     await producer.stop()
+    await rdb.aclose()
 
 
 if __name__ == "__main__":
+    start_health_server(health)
     asyncio.run(main())

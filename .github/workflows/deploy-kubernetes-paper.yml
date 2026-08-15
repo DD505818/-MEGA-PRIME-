@@ -1,0 +1,140 @@
+name: Deploy Kubernetes PAPER
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: omega-paper-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment: paper
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      KAFKA_BROKERS: ${{ secrets.KAFKA_BROKERS }}
+      KAFKA_SASL_USERNAME: ${{ secrets.KAFKA_SASL_USERNAME }}
+      KAFKA_SASL_PASSWORD: ${{ secrets.KAFKA_SASL_PASSWORD }}
+      REDIS_URL: ${{ secrets.REDIS_URL }}
+      POSTGRES_DSN: ${{ secrets.POSTGRES_DSN }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      KAFKA_EGRESS_CIDR: ${{ vars.KAFKA_EGRESS_CIDR }}
+      KAFKA_EGRESS_PORT: ${{ vars.KAFKA_EGRESS_PORT }}
+      REDIS_EGRESS_CIDR: ${{ vars.REDIS_EGRESS_CIDR }}
+      REDIS_EGRESS_PORT: ${{ vars.REDIS_EGRESS_PORT }}
+      POSTGRES_EGRESS_CIDR: ${{ vars.POSTGRES_EGRESS_CIDR }}
+      POSTGRES_EGRESS_PORT: ${{ vars.POSTGRES_EGRESS_PORT }}
+      GROQ_EGRESS_CIDR: ${{ vars.GROQ_EGRESS_CIDR }}
+      MANAGED_EGRESS_APPROVED: ${{ vars.MANAGED_EGRESS_APPROVED }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: v1.31.4
+      - name: Validate fail-closed TLS configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAFKA_BROKERS"
+          test -n "$KAFKA_SASL_USERNAME"
+          test -n "$KAFKA_SASL_PASSWORD"
+          test -n "$JWT_SECRET"
+          test "$MANAGED_EGRESS_APPROVED" = "true"
+          [[ "$REDIS_URL" == rediss://* ]]
+          [[ "$POSTGRES_DSN" == *"sslmode=verify-full"* ]]
+          python3 - <<'PY'
+          import ipaddress
+          import os
+
+          required = (
+              ("KAFKA_EGRESS_CIDR", "KAFKA_EGRESS_PORT"),
+              ("REDIS_EGRESS_CIDR", "REDIS_EGRESS_PORT"),
+              ("POSTGRES_EGRESS_CIDR", "POSTGRES_EGRESS_PORT"),
+          )
+          if os.environ.get("GROQ_API_KEY"):
+              required += (("GROQ_EGRESS_CIDR", None),)
+
+          for cidr_key, port_key in required:
+              value = os.environ.get(cidr_key, "")
+              network = ipaddress.ip_network(value, strict=True)
+              minimum = 16 if network.version == 4 else 48
+              if network.prefixlen < minimum:
+                  raise SystemExit(
+                      f"{cidr_key} must be an approved narrow range (IPv4 /{minimum}+ or IPv6 /{minimum}+)"
+                  )
+              if network.is_loopback or network.is_multicast or network.is_unspecified:
+                  raise SystemExit(f"{cidr_key} is not a managed-service range")
+              if port_key:
+                  port = int(os.environ.get(port_key, "0"))
+                  if not 1 <= port <= 65535:
+                      raise SystemExit(f"{port_key} is invalid")
+          PY
+      - name: Configure cluster access
+        env:
+          KUBE_CONFIG_B64: ${{ secrets.KUBE_CONFIG_B64 }}
+        run: |
+          set -euo pipefail
+          test -n "$KUBE_CONFIG_B64"
+          install -m 0700 -d "$HOME/.kube"
+          printf '%s' "$KUBE_CONFIG_B64" | base64 --decode > "$HOME/.kube/config"
+          chmod 0600 "$HOME/.kube/config"
+          kubectl auth can-i create deployments -n omega-prime
+      - name: Create least-privilege TLS credential secrets
+        run: |
+          set -euo pipefail
+          kubectl create namespace omega-prime --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n omega-prime create secret generic omega-kafka \
+            --from-literal=KAFKA_BROKERS="$KAFKA_BROKERS" \
+            --from-literal=KAFKA_SECURITY_PROTOCOL="SASL_SSL" \
+            --from-literal=KAFKA_SASL_MECHANISM="PLAIN" \
+            --from-literal=KAFKA_SASL_USERNAME="$KAFKA_SASL_USERNAME" \
+            --from-literal=KAFKA_SASL_PASSWORD="$KAFKA_SASL_PASSWORD" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n omega-prime create secret generic omega-redis \
+            --from-literal=REDIS_URL="$REDIS_URL" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n omega-prime create secret generic omega-postgres \
+            --from-literal=POSTGRES_DSN="$POSTGRES_DSN" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n omega-prime create secret generic omega-websocket \
+            --from-literal=JWT_SECRET="$JWT_SECRET" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n omega-prime create secret generic omega-llm \
+            --from-literal=GROQ_API_KEY="$GROQ_API_KEY" \
+            --dry-run=client -o yaml | kubectl apply -f -
+      - name: Render exact managed-service egress
+        run: |
+          set -euo pipefail
+          envsubst < infra/kubernetes/overlays/production/managed-egress.yaml.tpl \
+            > /tmp/managed-egress.yaml
+          kubectl apply --dry-run=server -f /tmp/managed-egress.yaml
+          if [[ -n "$GROQ_API_KEY" ]]; then
+            envsubst < infra/kubernetes/overlays/production/groq-egress.yaml.tpl \
+              > /tmp/groq-egress.yaml
+            kubectl apply --dry-run=server -f /tmp/groq-egress.yaml
+          fi
+      - name: Deploy PAPER-only workloads
+        env:
+          PAPER_MODE: "true"
+          LIVE_TRADING_ENABLED: "false"
+          TRADING_MODE: "PAPER"
+          BROKER_CERTIFIED: "false"
+          FAILURE_TESTS_PASSED: "false"
+        run: |
+          set -euo pipefail
+          kubectl apply -k infra/kubernetes/overlays/production
+          kubectl apply -f /tmp/managed-egress.yaml
+          if [[ -s /tmp/groq-egress.yaml ]]; then
+            kubectl apply -f /tmp/groq-egress.yaml
+          fi
+          kubectl -n omega-prime rollout status deployment --timeout=10m
+          test "$(kubectl -n omega-prime get configmap omega-runtime -o jsonpath='{.data.PAPER_MODE}')" = "true"
+          test "$(kubectl -n omega-prime get configmap omega-runtime -o jsonpath='{.data.TRADING_MODE}')" = "PAPER"
+          test "$(kubectl -n omega-prime get configmap omega-runtime -o jsonpath='{.data.LIVE_TRADING_ENABLED}')" = "false"
+          test "$(kubectl -n omega-prime get configmap omega-runtime -o jsonpath='{.data.BROKER_CERTIFIED}')" = "false"
+          test "$(kubectl -n omega-prime get configmap omega-runtime -o jsonpath='{.data.FAILURE_TESTS_PASSED}')" = "false"

@@ -1,8 +1,7 @@
--- ΩMEGA PRIME Δ — PostgreSQL / TimescaleDB schema
+-- ΩMEGA PRIME Δ — portable PostgreSQL schema
 -- Append-only design; no UPDATEs on audit tables.
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;
 
 -- ── Audit log (Truth-Core hash chain) ────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS audit_log (
@@ -34,7 +33,6 @@ CREATE TABLE IF NOT EXISTS signals (
     reject_reason   TEXT,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-SELECT create_hypertable('signals', 'created_at', if_not_exists => TRUE);
 CREATE INDEX IF NOT EXISTS idx_signals_strategy ON signals(strategy_id);
 CREATE INDEX IF NOT EXISTS idx_signals_symbol   ON signals(symbol);
 
@@ -57,7 +55,6 @@ CREATE TABLE IF NOT EXISTS orders (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-SELECT create_hypertable('orders', 'created_at', if_not_exists => TRUE);
 CREATE INDEX IF NOT EXISTS idx_orders_signal   ON orders(signal_id);
 CREATE INDEX IF NOT EXISTS idx_orders_symbol   ON orders(symbol);
 CREATE INDEX IF NOT EXISTS idx_orders_state    ON orders(state);
@@ -65,7 +62,7 @@ CREATE INDEX IF NOT EXISTS idx_orders_state    ON orders(state);
 -- ── Fills ────────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS fills (
     fill_id         BIGSERIAL PRIMARY KEY,
-    order_id        UUID        NOT NULL,
+    order_id        UUID        NOT NULL UNIQUE,
     signal_id       UUID,
     strategy_id     TEXT        NOT NULL,
     symbol          TEXT        NOT NULL,
@@ -76,7 +73,6 @@ CREATE TABLE IF NOT EXISTS fills (
     venue           TEXT,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-SELECT create_hypertable('fills', 'created_at', if_not_exists => TRUE);
 CREATE INDEX IF NOT EXISTS idx_fills_order    ON fills(order_id);
 CREATE INDEX IF NOT EXISTS idx_fills_strategy ON fills(strategy_id);
 
@@ -91,7 +87,6 @@ CREATE TABLE IF NOT EXISTS portfolio_snapshots (
     open_positions  INTEGER       NOT NULL DEFAULT 0,
     snapshot_at     TIMESTAMPTZ   NOT NULL DEFAULT NOW()
 );
-SELECT create_hypertable('portfolio_snapshots', 'snapshot_at', if_not_exists => TRUE);
 
 -- ── Strategy KPIs ────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS strategy_kpis (
@@ -123,5 +118,5 @@ CREATE TABLE IF NOT EXISTS positions (
 
 -- ── Initial seed data ─────────────────────────────────────────────────────────
 INSERT INTO portfolio_snapshots (equity, peak_equity, daily_pnl, total_pnl, drawdown_pct, open_positions)
-VALUES (100000, 100000, 0, 0, 0, 0)
+VALUES (2000, 2000, 0, 0, 0, 0)
 ON CONFLICT DO NOTHING;

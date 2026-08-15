@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"log"
 	"math"
 	"math/rand"
@@ -88,24 +89,27 @@ type ExecutionEngine struct {
 }
 
 func NewExecutionEngine(redisAddr, brokers string) *ExecutionEngine {
-	rdb := redis.NewClient(&redis.Options{Addr: trimRedis(redisAddr)})
+	paperMode := os.Getenv("PAPER_MODE") == "" || os.Getenv("PAPER_MODE") == "true"
+	if !paperMode || os.Getenv("LIVE_TRADING_ENABLED") == "true" {
+		log.Fatal("LIVE execution is disabled pending broker certification and failure testing")
+	}
 
-	c, err := kafka.NewConsumer(&kafka.ConfigMap{
+	rdb := newRedisClient(redisAddr)
+
+	c, err := kafka.NewConsumer(kafkaTransport(kafka.ConfigMap{
 		"bootstrap.servers": brokers,
 		"group.id":          "execution-engine",
 		"auto.offset.reset": "latest",
-	})
+	}))
 	if err != nil {
 		log.Fatalf("execution kafka consumer: %v", err)
 	}
 	c.SubscribeTopics([]string{"signals.approved", "emergency.halt"}, nil)
 
-	p, err := kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": brokers})
+	p, err := kafka.NewProducer(kafkaTransport(kafka.ConfigMap{"bootstrap.servers": brokers}))
 	if err != nil {
 		log.Fatalf("execution kafka producer: %v", err)
 	}
-
-	paperMode := os.Getenv("PAPER_MODE") == "" || os.Getenv("PAPER_MODE") == "true"
 
 	return &ExecutionEngine{
 		redis:     rdb,
@@ -207,6 +211,11 @@ func (e *ExecutionEngine) paperFill(order *Order) (float64, error) {
 	notional := order.LimitPrice * order.Qty
 	impact := 0.0001 * math.Sqrt(notional/100_000)
 	jitter := (rand.Float64() - 0.5) * 0.0002
+	if os.Getenv("PAPER_DETERMINISTIC") == "true" {
+		h := fnv.New64a()
+		_, _ = h.Write([]byte(order.SignalID))
+		jitter = (float64(h.Sum64()%20_001)/100_000_000.0)-0.0001
+	}
 
 	if order.Side == "BUY" {
 		return order.LimitPrice * (1 + impact + jitter), nil
@@ -326,7 +335,7 @@ func selectAlgo(order *Order) (OrderType, map[string]interface{}) {
 	case notional > 30_000:
 		return TypeVWAP, map[string]interface{}{"participation_rate": 0.1}
 	case notional > 10_000:
-		nSlices := min3(5, max2(3, int(notional/4_000)))
+		nSlices := min3(5, max2(3, int(notional/4_000)), 5)
 		return TypeIceberg, map[string]interface{}{"n_slices": nSlices, "interval_secs": 30}
 	case notional > 2_000:
 		return TypeTWAP, map[string]interface{}{"duration_mins": 10, "n_slices": 5}
@@ -418,9 +427,32 @@ func main() {
 	go eng.run()
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"status":"ok"}`))
-	})
+	liveHandler := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"live"}`))
+	}
+	readyHandler := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		if err := eng.redis.Ping(ctx).Err(); err != nil {
+			http.Error(w, `{"status":"not_ready","dependency":"redis"}`, http.StatusServiceUnavailable)
+			return
+		}
+		if _, err := eng.producer.GetMetadata(nil, true, 2000); err != nil {
+			http.Error(w, `{"status":"not_ready","dependency":"kafka"}`, http.StatusServiceUnavailable)
+			return
+		}
+		assignment, err := eng.consumer.Assignment()
+		if err != nil || len(assignment) == 0 {
+			http.Error(w, `{"status":"not_ready","dependency":"kafka_consumer"}`, http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = w.Write([]byte(`{"status":"ready"}`))
+	}
+	mux.HandleFunc("/health", liveHandler)
+	mux.HandleFunc("/health/live", liveHandler)
+	mux.HandleFunc("/health/ready", readyHandler)
 	mux.HandleFunc("/orders", eng.ordersHandler)
 
 	go func() {

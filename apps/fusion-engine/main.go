@@ -67,20 +67,19 @@ type FusionEngine struct {
 }
 
 func NewFusionEngine(redisAddr, brokers string) *FusionEngine {
-	addr := strings.TrimPrefix(redisAddr, "redis://")
-	rdb := redis.NewClient(&redis.Options{Addr: addr})
+	rdb := newRedisClient(redisAddr)
 
-	c, err := kafka.NewConsumer(&kafka.ConfigMap{
+	c, err := kafka.NewConsumer(kafkaTransport(kafka.ConfigMap{
 		"bootstrap.servers": brokers,
 		"group.id":          "fusion-engine",
 		"auto.offset.reset": "latest",
-	})
+	}))
 	if err != nil {
 		log.Fatalf("fusion kafka consumer: %v", err)
 	}
 	c.SubscribeTopics([]string{"signals.raw"}, nil)
 
-	p, err := kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": brokers})
+	p, err := kafka.NewProducer(kafkaTransport(kafka.ConfigMap{"bootstrap.servers": brokers}))
 	if err != nil {
 		log.Fatalf("fusion kafka producer: %v", err)
 	}
@@ -350,9 +349,27 @@ func main() {
 	go fe.run()
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `{"status":"ok"}`)
-	})
+	liveHandler := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"status":"live"}`)
+	}
+	readyHandler := func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		if err := fe.redis.Ping(ctx).Err(); err != nil {
+			http.Error(w, `{"status":"not_ready","dependency":"redis"}`, http.StatusServiceUnavailable)
+			return
+		}
+		if _, err := fe.producer.GetMetadata(nil, true, 2000); err != nil {
+			http.Error(w, `{"status":"not_ready","dependency":"kafka"}`, http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"status":"ready"}`)
+	}
+	mux.HandleFunc("/health", liveHandler)
+	mux.HandleFunc("/health/live", liveHandler)
+	mux.HandleFunc("/health/ready", readyHandler)
 	mux.HandleFunc("/stats", fe.statsHandler)
 
 	go func() {

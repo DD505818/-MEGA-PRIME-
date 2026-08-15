@@ -12,7 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
-	"strings"
+	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/go-redis/redis/v8"
@@ -41,20 +41,19 @@ type Allocator struct {
 }
 
 func NewAllocator(redisAddr, brokers string) *Allocator {
-	addr := strings.TrimPrefix(redisAddr, "redis://")
-	rdb := redis.NewClient(&redis.Options{Addr: addr})
+	rdb := newRedisClient(redisAddr)
 
-	c, err := kafka.NewConsumer(&kafka.ConfigMap{
+	c, err := kafka.NewConsumer(kafkaTransport(kafka.ConfigMap{
 		"bootstrap.servers": brokers,
 		"group.id":          "capital-allocator",
 		"auto.offset.reset": "latest",
-	})
+	}))
 	if err != nil {
 		log.Fatalf("allocator consumer: %v", err)
 	}
 	c.SubscribeTopics([]string{"signals.approved"}, nil)
 
-	p, err := kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": brokers})
+	p, err := kafka.NewProducer(kafkaTransport(kafka.ConfigMap{"bootstrap.servers": brokers}))
 	if err != nil {
 		log.Fatalf("allocator producer: %v", err)
 	}
@@ -236,9 +235,27 @@ func main() {
 	go alloc.run()
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"status":"ok"}`))
-	})
+	liveHandler := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"live"}`))
+	}
+	readyHandler := func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		if err := alloc.redis.Ping(ctx).Err(); err != nil {
+			http.Error(w, `{"status":"not_ready","dependency":"redis"}`, http.StatusServiceUnavailable)
+			return
+		}
+		if _, err := alloc.producer.GetMetadata(nil, true, 2000); err != nil {
+			http.Error(w, `{"status":"not_ready","dependency":"kafka"}`, http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ready"}`))
+	}
+	mux.HandleFunc("/health", liveHandler)
+	mux.HandleFunc("/health/live", liveHandler)
+	mux.HandleFunc("/health/ready", readyHandler)
 	go func() {
 		log.Println("Capital allocator HTTP on :8082")
 		http.ListenAndServe(":8082", mux)

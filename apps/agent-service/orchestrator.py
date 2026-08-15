@@ -11,6 +11,8 @@ from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 
 from normalizer import normalize_signal
 from signal_validator import validate
+from health import HealthState
+from transport import kafka_client_kwargs
 
 log = logging.getLogger("orchestrator")
 KAFKA = os.getenv("KAFKA_BROKERS", "kafka:9092")
@@ -28,27 +30,34 @@ def _build_df(records: list[dict]) -> pd.DataFrame:
 
 
 class Orchestrator:
-    def __init__(self, strategies: list):
+    def __init__(self, strategies: list, health: HealthState):
         self.strategies = {s.name: s for s in strategies}
+        self.health = health
         self._daily_df: pd.DataFrame = pd.DataFrame()
         self._intraday_df: pd.DataFrame = pd.DataFrame()
 
     async def run(self) -> None:
-        producer = AIOKafkaProducer(bootstrap_servers=KAFKA)
+        kafka_kwargs = kafka_client_kwargs()
+        producer = AIOKafkaProducer(**kafka_kwargs)
         consumer = AIOKafkaConsumer(
             "features.norm",
-            bootstrap_servers=KAFKA,
+            **kafka_kwargs,
             group_id="agent-service",
             auto_offset_reset="latest",
         )
         await producer.start()
         await consumer.start()
+        self.health.ready()
 
         log.info("Orchestrator started with %d strategies", len(self.strategies))
         try:
             async for msg in consumer:
                 await self._handle(msg, producer)
+        except Exception:
+            self.health.not_ready("kafka")
+            raise
         finally:
+            self.health.not_ready("shutdown")
             await consumer.stop()
             await producer.stop()
 

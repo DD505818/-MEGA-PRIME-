@@ -1,0 +1,193 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: risk-service
+  namespace: omega-prime
+  labels: {app.kubernetes.io/name: risk-service, app.kubernetes.io/part-of: omega-prime}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app.kubernetes.io/name: risk-service}}
+  template:
+    metadata: {labels: {app.kubernetes.io/name: risk-service, app.kubernetes.io/part-of: omega-prime}}
+    spec:
+      serviceAccountName: omega-runtime
+      securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: risk-service
+          image: ghcr.io/dd505818/omega-prime-risk-service@sha256:e8c9d6d0bbf7d7cee5943a5645ae0b29cffd3dfd6db224c2a8b2827eaa478aa4
+          imagePullPolicy: IfNotPresent
+          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-kafka}}, {secretRef: {name: omega-redis}}]
+          ports: [{name: http, containerPort: 8080}]
+          readinessProbe: {httpGet: {path: /health/ready, port: http}, timeoutSeconds: 5, periodSeconds: 5, failureThreshold: 3}
+          livenessProbe: {httpGet: {path: /health/live, port: http}, timeoutSeconds: 5, initialDelaySeconds: 15, periodSeconds: 10}
+          resources: {requests: {cpu: 100m, memory: 128Mi}, limits: {cpu: "1", memory: 512Mi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata: {name: risk-service, namespace: omega-prime}
+spec:
+  selector: {app.kubernetes.io/name: risk-service}
+  ports: [{name: http, port: 8080, targetPort: http}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: execution-service
+  namespace: omega-prime
+  labels: {app.kubernetes.io/name: execution-service, app.kubernetes.io/part-of: omega-prime}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app.kubernetes.io/name: execution-service}}
+  template:
+    metadata: {labels: {app.kubernetes.io/name: execution-service, app.kubernetes.io/part-of: omega-prime}}
+    spec:
+      serviceAccountName: omega-runtime
+      securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: execution-service
+          image: ghcr.io/dd505818/omega-prime-execution-service@sha256:b84da9e123de44da34aab92728d8f2fac620cfb06b6d04a1f639a1099226f11d
+          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-kafka}}, {secretRef: {name: omega-redis}}]
+          ports: [{name: http, containerPort: 8081}]
+          readinessProbe: {httpGet: {path: /health/ready, port: http}, timeoutSeconds: 5, periodSeconds: 5, failureThreshold: 3}
+          livenessProbe: {httpGet: {path: /health/live, port: http}, timeoutSeconds: 5, initialDelaySeconds: 15, periodSeconds: 10}
+          resources: {requests: {cpu: 100m, memory: 128Mi}, limits: {cpu: "1", memory: 512Mi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+      terminationGracePeriodSeconds: 60
+---
+apiVersion: v1
+kind: Service
+metadata: {name: execution-service, namespace: omega-prime}
+spec:
+  selector: {app.kubernetes.io/name: execution-service}
+  ports: [{name: http, port: 8081, targetPort: http}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: portfolio-service
+  namespace: omega-prime
+  labels: {app.kubernetes.io/name: portfolio-service, app.kubernetes.io/part-of: omega-prime}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app.kubernetes.io/name: portfolio-service}}
+  template:
+    metadata: {labels: {app.kubernetes.io/name: portfolio-service, app.kubernetes.io/part-of: omega-prime}}
+    spec:
+      serviceAccountName: omega-runtime
+      securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: portfolio-service
+          image: ghcr.io/dd505818/omega-prime-portfolio-service@sha256:4ea202afac89473dc30478b9bc50cd0883894fd4b24c7eacd287d70ea1ecac1a
+          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-kafka}}, {secretRef: {name: omega-redis}}, {secretRef: {name: omega-postgres}}]
+          ports: [{name: http, containerPort: 8083}]
+          readinessProbe: {httpGet: {path: /health/ready, port: http}, timeoutSeconds: 5, periodSeconds: 5, failureThreshold: 3}
+          livenessProbe: {httpGet: {path: /health/live, port: http}, timeoutSeconds: 5, initialDelaySeconds: 15, periodSeconds: 10}
+          resources: {requests: {cpu: 100m, memory: 128Mi}, limits: {cpu: "1", memory: 512Mi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: portfolio-service, namespace: omega-prime}
+spec:
+  selector: {app.kubernetes.io/name: portfolio-service}
+  ports: [{name: http, port: 8083, targetPort: http}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: truth-core
+  namespace: omega-prime
+  labels: {app.kubernetes.io/name: truth-core, app.kubernetes.io/part-of: omega-prime}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app.kubernetes.io/name: truth-core}}
+  template:
+    metadata: {labels: {app.kubernetes.io/name: truth-core, app.kubernetes.io/part-of: omega-prime}}
+    spec:
+      serviceAccountName: omega-runtime
+      securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: truth-core
+          image: ghcr.io/dd505818/omega-prime-truth-core@sha256:6f46f066b598bac9fad73b1a9d366d0ef68fcc8b39cacd0ca18f4ac92e44e5a1
+          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-postgres}}]
+          ports: [{name: http, containerPort: 8084}]
+          readinessProbe: {httpGet: {path: /health/ready, port: http}, timeoutSeconds: 5, periodSeconds: 5, failureThreshold: 3}
+          livenessProbe: {httpGet: {path: /health/live, port: http}, timeoutSeconds: 5, initialDelaySeconds: 15, periodSeconds: 10}
+          startupProbe: {httpGet: {path: /health/live, port: http}, timeoutSeconds: 5, periodSeconds: 5, failureThreshold: 24}
+          resources: {requests: {cpu: 100m, memory: 128Mi}, limits: {cpu: "1", memory: 512Mi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: truth-core, namespace: omega-prime}
+spec:
+  selector: {app.kubernetes.io/name: truth-core}
+  ports: [{name: http, port: 8084, targetPort: http}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: websocket-gateway
+  namespace: omega-prime
+  labels: {app.kubernetes.io/name: websocket-gateway, app.kubernetes.io/part-of: omega-prime}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app.kubernetes.io/name: websocket-gateway}}
+  template:
+    metadata: {labels: {app.kubernetes.io/name: websocket-gateway, app.kubernetes.io/part-of: omega-prime}}
+    spec:
+      serviceAccountName: omega-runtime
+      securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: websocket-gateway
+          image: ghcr.io/dd505818/omega-prime-websocket-gateway@sha256:7137882a20813180d519a66d6c72350d74b697849e3cc15bb923d4213dd9d421
+          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-kafka}}, {secretRef: {name: omega-redis}}, {secretRef: {name: omega-websocket}}]
+          env: [{name: PORT, value: "3001"}]
+          ports: [{name: http, containerPort: 3001}]
+          readinessProbe: {httpGet: {path: /health/ready, port: http}, timeoutSeconds: 5, periodSeconds: 5, failureThreshold: 3}
+          livenessProbe: {httpGet: {path: /health/live, port: http}, timeoutSeconds: 5, initialDelaySeconds: 15, periodSeconds: 10}
+          resources: {requests: {cpu: 100m, memory: 128Mi}, limits: {cpu: 500m, memory: 256Mi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {sizeLimit: 64Mi}}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: websocket-gateway, namespace: omega-prime}
+spec:
+  selector: {app.kubernetes.io/name: websocket-gateway}
+  ports: [{name: http, port: 3001, targetPort: http}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-ui
+  namespace: omega-prime
+  labels: {app.kubernetes.io/name: web-ui, app.kubernetes.io/part-of: omega-prime}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app.kubernetes.io/name: web-ui}}
+  template:
+    metadata: {labels: {app.kubernetes.io/name: web-ui, app.kubernetes.io/part-of: omega-prime}}
+    spec:
+      serviceAccountName: omega-runtime
+      securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: web-ui
+          image: ghcr.io/dd505818/omega-prime-web-ui@sha256:dae4a4030e64885dbf97e13a85e8c0ddb588aa058e2b2e31792c3924e1d75f22
+          ports: [{name: http, containerPort: 3000}]
+          readinessProbe: {httpGet: {path: /health/ready, port: http}, timeoutSeconds: 5, periodSeconds: 5, failureThreshold: 3}
+          livenessProbe: {httpGet: {path: /health/live, port: http}, timeoutSeconds: 5, initialDelaySeconds: 15, periodSeconds: 10}
+          resources: {requests: {cpu: 100m, memory: 256Mi}, limits: {cpu: "1", memory: 768Mi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {sizeLimit: 64Mi}}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: web-ui, namespace: omega-prime}
+spec:
+  selector: {app.kubernetes.io/name: web-ui}
+  ports: [{name: http, port: 3000, targetPort: http}]
