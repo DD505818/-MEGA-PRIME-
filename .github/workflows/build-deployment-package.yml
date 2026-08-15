@@ -5,15 +5,18 @@ on:
   pull_request:
     paths:
       - DEPLOYMENT_PACKAGE.md
-      - scripts/build-deployment-package.sh
-      - .github/workflows/build-deployment-package.yml
+      - scripts/**
+      - .github/workflows/**
       - apps/**
       - services/agents/**
       - strategies/**
+      - backtests/**
       - backend/**
       - infrastructure/**
-      - infra/db-migrations/**
+      - infra/**
+      - omega-prime-delta/infrastructure/helm/**
       - docker-compose.yml
+      - .env.example
 
 permissions:
   contents: read
@@ -50,6 +53,8 @@ jobs:
           test -d "$PACKAGE/Backend-Services"
           test -d "$PACKAGE/Dashboard-UI"
           test -d "$PACKAGE/Deployment-Tools"
+          test -f "$PACKAGE/Deployment-Tools/helm/omega-prime-delta/Chart.yaml"
+          test -f "$PACKAGE/Deployment-Tools/cloudflare/omegaaa-companion.txt"
           test -s "$PACKAGE/SHA256SUMS"
           test -s "$PACKAGE/PACKAGE_INFO.txt"
 
@@ -58,6 +63,8 @@ jobs:
           grep -qx 'live_trading_enabled=false' "$PACKAGE/PACKAGE_INFO.txt"
           grep -qx 'ai_execution_authority=false' "$PACKAGE/PACKAGE_INFO.txt"
           grep -qx 'blockchain_execution_certified=false' "$PACKAGE/PACKAGE_INFO.txt"
+          grep -qx 'cloudflare_edge_repository=DD505818/omegaaa' "$PACKAGE/PACKAGE_INFO.txt"
+          grep -qx 'cloudflare_edge_commit=a8fe606ec4f4f8539baf26321b521b80e1db5d1a' "$PACKAGE/PACKAGE_INFO.txt"
 
           test -n "$(find dist -maxdepth 1 -type f -name 'omega-prime-deployment-*.tar.gz' -print -quit)"
 
