@@ -112,7 +112,6 @@ jobs:
           sys.path.insert(0, 'services/agents/mamba')
           from app.agent import generate_signal
           payload = {'volatility': 0.02, 'close': 64231.0, 'pdl': 63900.0, 'pdh': 64500.0, 'symbol': 'BTC/USD'}
-          # Should not crash; may return None or signal dict
           result = generate_signal(payload)
           if result: assert result.get('risk') == 0.005
           print(f'MAMBA signal: {result}')
@@ -163,7 +162,7 @@ jobs:
           - {name: strategy-engine,       path: services/strategy-engine}
           - {name: rl-agent-cluster,      path: services/rl-agent-cluster}
           - {name: execution-router,      path: services/execution-router}
-          - {name: risk-engine,           path: services/risk-engine}
+          - {name: risk-engine,           path: apps/risk-service}
           - {name: portfolio-service,     path: services/portfolio-service}
           - {name: backtesting-cluster,   path: services/backtesting-cluster}
           - {name: gateway-api,           path: gateway-api}
@@ -211,7 +210,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build risk-engine for scan
-        run: docker build -t omega-prime/risk-engine:scan ./services/risk-engine
+        run: docker build -t omega-prime/risk-engine:scan ./apps/risk-service
 
       - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -245,9 +244,7 @@ jobs:
       - name: Validate K8s manifests
         run: |
           echo "Validating Kubernetes manifests..."
-          # Dry-run validation (requires kubectl configured)
           kubectl apply --dry-run=client -f infrastructure/kubernetes/base/ 2>/dev/null || echo "kubectl not configured in CI (expected)"
-          # Count manifests
           echo "Agent manifests: $(ls infrastructure/kubernetes/agents/*.yaml | wc -l)"
           echo "Service manifests: $(ls infrastructure/kubernetes/services/*.yaml | wc -l)"
 
@@ -258,8 +255,6 @@ jobs:
           echo "SHA: ${{ github.sha }}"
           echo "Services: 8 core + 19 agents + ZK-proof + dashboard-react = 29 images"
           echo "Namespace: omega-prime-staging"
-          # In production: kubectl apply -f infrastructure/kubernetes/base/ -n omega-prime-staging
-          # kubectl apply -f infrastructure/kubernetes/agents/ -n omega-prime-staging
 
   # ── Stage 7: Soak Test ────────────────────────────────────────────
   soak:
@@ -295,7 +290,3 @@ jobs:
           echo "Deploying 29 services to omega-prime namespace"
           echo "Risk controls: 0.5% per trade | 2% daily | 10% drawdown"
           echo "Kill switch: ARMED"
-          # kubectl apply -f infrastructure/kubernetes/base/ -n omega-prime
-          # kubectl apply -f infrastructure/kubernetes/services/ -n omega-prime
-          # kubectl apply -f infrastructure/kubernetes/agents/ -n omega-prime
-          # kubectl apply -f infrastructure/kubernetes/monitoring/ -n omega-prime
