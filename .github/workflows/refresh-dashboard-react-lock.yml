@@ -30,6 +30,7 @@ jobs:
         working-directory: dashboard-react
         run: |
           npm install --package-lock-only --ignore-scripts
+          npm audit fix --package-lock-only --ignore-scripts
           npm ci --ignore-scripts
           npm audit --audit-level=high
           npx --yes lockfile-lint --path package-lock.json --type npm --validate-https
