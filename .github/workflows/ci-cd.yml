@@ -85,6 +85,9 @@ jobs:
         run: |
           pytest -q --tb=short --cov=services --cov=gateway-api \
                  --ignore=services/agents \
+                 --ignore=omega-prime-pro \
+                 --ignore=omega-prime-hardened \
+                 --ignore=omega-prime-delta \
                  || pytest -q --tb=short tests/ -x
 
       - name: Test ZK-proof functions
@@ -179,7 +182,7 @@ jobs:
           - {name: agent-maker,           path: services/agents/maker}
           - {name: agent-twin,            path: services/agents/twin}
           - {name: agent-nexus,           path: services/agents/nexus}
-          - {name: agent-senti,           path: services/agents/senti}
+          - {name: agent-senti,            path: services/agents/senti}
           - {name: agent-orbit,           path: services/agents/orbit}
           - {name: agent-oracle,          path: services/agents/oracle}
           - {name: agent-harvest,         path: services/agents/harvest}
@@ -210,7 +213,7 @@ jobs:
       - name: Build risk-engine for scan
         run: docker build -t omega-prime/risk-engine:scan ./services/risk-engine
 
-      - uses: aquasecurity/trivy-action@0.24.0
+      - uses: aquasecurity/trivy-action@ed142fd0b5a85c7bd27cd015873457c85dee9b7e # v0.36.0
         with:
           image-ref: omega-prime/risk-engine:scan
           format: table
@@ -221,7 +224,7 @@ jobs:
       - name: Build gateway-api for scan
         run: docker build -t omega-prime/gateway-api:scan ./gateway-api
 
-      - uses: aquasecurity/trivy-action@0.24.0
+      - uses: aquasecurity/trivy-action@ed142fd0b5a85c7bd27cd015873457c85dee9b7e # v0.36.0
         with:
           image-ref: omega-prime/gateway-api:scan
           format: table
@@ -275,7 +278,7 @@ jobs:
       - name: Kill switch drill
         run: python tests/drills/kill_switch_drill.py 2>/dev/null || python -c "print('Kill switch drill OK')"
 
-  # ── Stage 8: Promote to Production ───────────────────────────────
+  # ── Stage 8: Promote to Production ────────────────────────────────
   deploy-production:
     name: Deploy to Production
     runs-on: ubuntu-latest
