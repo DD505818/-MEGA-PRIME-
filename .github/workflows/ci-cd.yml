@@ -161,7 +161,7 @@ jobs:
           - {name: feature-engine,        path: services/feature-engine}
           - {name: strategy-engine,       path: services/strategy-engine}
           - {name: rl-agent-cluster,      path: services/rl-agent-cluster}
-          - {name: execution-router,      path: services/execution-router}
+          - {name: execution-router,      path: services/execution-router-go}
           - {name: risk-engine,           path: apps/risk-service}
           - {name: portfolio-service,     path: services/portfolio-service}
           - {name: backtesting-cluster,   path: services/backtesting-cluster}
