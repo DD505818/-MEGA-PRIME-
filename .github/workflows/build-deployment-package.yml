@@ -1,0 +1,90 @@
+name: Build Deployment Package
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - DEPLOYMENT_PACKAGE.md
+      - scripts/build-deployment-package.sh
+      - .github/workflows/build-deployment-package.yml
+      - apps/**
+      - services/agents/**
+      - strategies/**
+      - backend/**
+      - infrastructure/**
+      - infra/db-migrations/**
+      - docker-compose.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deployment-package-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: Build PAPER deployment artifact
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Build categorized package
+        shell: bash
+        run: |
+          chmod +x scripts/build-deployment-package.sh
+          bash scripts/build-deployment-package.sh
+
+      - name: Validate package structure and PAPER posture
+        shell: bash
+        run: |
+          set -euo pipefail
+          PACKAGE="dist/Omega-Prime-Deployment"
+
+          test -d "$PACKAGE/Core-Trading-Scripts"
+          test -d "$PACKAGE/Backend-Services"
+          test -d "$PACKAGE/Dashboard-UI"
+          test -d "$PACKAGE/Deployment-Tools"
+          test -s "$PACKAGE/SHA256SUMS"
+          test -s "$PACKAGE/PACKAGE_INFO.txt"
+
+          grep -qx 'release_mode=PAPER' "$PACKAGE/PACKAGE_INFO.txt"
+          grep -qx 'paper_mode_required=true' "$PACKAGE/PACKAGE_INFO.txt"
+          grep -qx 'live_trading_enabled=false' "$PACKAGE/PACKAGE_INFO.txt"
+          grep -qx 'ai_execution_authority=false' "$PACKAGE/PACKAGE_INFO.txt"
+          grep -qx 'blockchain_execution_certified=false' "$PACKAGE/PACKAGE_INFO.txt"
+
+          test -n "$(find dist -maxdepth 1 -type f -name 'omega-prime-deployment-*.tar.gz' -print -quit)"
+
+      - name: Validate packaged Docker Compose topology
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist/Omega-Prime-Deployment/Deployment-Tools
+          docker compose \
+            --env-file .env.example \
+            -f docker-compose.package.yml \
+            config >/dev/null
+
+      - name: Verify checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist/Omega-Prime-Deployment
+          sha256sum --check SHA256SUMS
+
+      - name: Upload deployment package
+        uses: actions/upload-artifact@v4
+        with:
+          name: omega-prime-paper-deployment-${{ github.sha }}
+          path: |
+            dist/omega-prime-deployment-*.tar.gz
+            dist/omega-prime-deployment-*.zip
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
