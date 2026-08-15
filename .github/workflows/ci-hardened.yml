@@ -44,7 +44,7 @@ jobs:
           npx --yes lockfile-lint --path package-lock.json --type npm --validate-https
 
       - name: Build risk-engine image
-        run: docker build -t omega-prime/risk-engine:test ./services/risk-engine
+        run: docker build -t omega-prime/risk-engine:test ./apps/risk-service
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
