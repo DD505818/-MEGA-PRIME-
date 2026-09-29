@@ -45,14 +45,19 @@ function kafkaTransport() {
   return options;
 }
 const REDIS_URL = process.env.REDIS_URL || 'redis://redis:6379';
-const JWT_SECRET = process.env.JWT_SECRET || 'change-me';
+// Fail closed: the gateway must not start without a real JWT secret.
+// resolveJwtSecret() throws on missing/denylisted/short values.
+const JWT_SECRET = resolveJwtSecret();
+// WS upgrade origins are pinned at startup from ALLOWED_ORIGINS.
+const WS_ALLOWED_ORIGINS = parseAllowedOrigins();
 const PORT = parseInt(process.env.PORT || '3001', 10);
-const ALLOW_DEV_TOKEN = process.env.ALLOW_DEV_TOKEN === 'true';
 let kafkaReady = false;
 
 // Kafka topics to bridge
 const TOPICS = [
   'signals.raw',
+  'signals.fused',    // 1B.4: fusion-engine consensus output (observe)
+  'signals.sized',    // 1B.4: capital-allocator output (observe)
   'signals.approved',
   'signals.rejected',
   'orders.fills',
@@ -65,7 +70,7 @@ const TOPICS = [
 
 // Channel → topic mapping for client subscriptions
 const CHANNEL_TOPICS = {
-  signals:   ['signals.raw', 'signals.approved', 'signals.rejected'],
+  signals:   ['signals.raw', 'signals.fused', 'signals.sized', 'signals.approved', 'signals.rejected'],
   orders:    ['orders.fills', 'orders.routed'],
   risk:      ['risk.alerts', 'emergency.halt'],
   prices:    ['market.prices'],
