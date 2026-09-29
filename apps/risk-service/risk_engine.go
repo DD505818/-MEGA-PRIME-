@@ -23,9 +23,6 @@ type RiskEngine struct {
 	killSwitch   atomic.Bool
 	circuitBreak atomic.Bool
 
-	mu            sync.Mutex
-	seenSignalIDs map[string]struct{} // duplicate detection
-
 	// controlMu serializes kill/reset state transitions so concurrent
 	// /kill and /reset calls cannot interleave: the in-memory flag and the
 	// durable Redis flag are always written under this lock, so they cannot
@@ -48,6 +45,7 @@ type RiskEngine struct {
 	riskPerTrade     float64
 	minConfidence    float64
 	staleBookSecs    int64
+	dedupTTL         time.Duration
 	maxAssetExposure float64
 	maxCorrelation   float64
 }
@@ -71,7 +69,6 @@ func NewRiskEngine(redisAddr, brokers string) *RiskEngine {
 	}
 
 	return &RiskEngine{
-		seenSignalIDs:    make(map[string]struct{}),
 		redis:            rdb,
 		consumer:         c,
 		producer:         p,
@@ -84,6 +81,7 @@ func NewRiskEngine(redisAddr, brokers string) *RiskEngine {
 		riskPerTrade:     envFloat("RISK_PER_TRADE", 0.005),
 		minConfidence:    envFloat("MIN_CONFIDENCE", 0.60),
 		staleBookSecs:    int64(envInt("STALE_BOOK_SECONDS", 5)),
+		dedupTTL:         time.Duration(envInt("DEDUP_TTL_SECONDS", 86400)) * time.Second,
 		maxAssetExposure: envFloat("MAX_ASSET_EXPOSURE_PCT", 0.25),
 		maxCorrelation:   envFloat("MAX_PAIR_CORRELATION", 0.70),
 	}
@@ -209,19 +207,28 @@ func (r *RiskEngine) validate(signal map[string]interface{}) (bool, string, floa
 	}
 
 	// ── Gate 11: Duplicate Signal ID ────────────────────────────────────────
+	// Durable atomic check-and-set (1B.3). SET NX is a single atomic op:
+	// the dedup record is written to durable Redis BEFORE the approved
+	// signal is published to signals.approved, so a crash between submit
+	// and record cannot produce a duplicate order — the redelivered signal
+	// finds the record and is rejected. No check-then-set race between
+	// replicas, no in-memory map to lose on restart (the old 50k-entry
+	// wipe could re-admit old IDs). The TTL bounds memory; it must exceed
+	// the longest window in which a redelivered duplicate could arrive
+	// (Kafka rebalance/redelivery + strategy re-emit cadence). Default 24h
+	// via DEDUP_TTL_SECONDS.
+	// Fail-closed: if the dedup store is unavailable we cannot prove
+	// uniqueness, so the signal is rejected. A dropped signal is a missed
+	// trade; a duplicated signal is an unintended position.
 	signalID, _ := signal["signal_id"].(string)
-	r.mu.Lock()
-	_, seen := r.seenSignalIDs[signalID]
-	if seen {
-		r.mu.Unlock()
+	dedupKey := "risk:seen_signal:" + signalID
+	added, err := r.redis.SetNX(ctx, dedupKey, "1", r.dedupTTL).Result()
+	if err != nil {
+		return false, "GATE11_DEDUP_STORE_UNAVAILABLE", 0
+	}
+	if !added {
 		return false, "GATE11_DUPLICATE_SIGNAL_ID", 0
 	}
-	r.seenSignalIDs[signalID] = struct{}{}
-	// Prune map if too large
-	if len(r.seenSignalIDs) > 50_000 {
-		r.seenSignalIDs = make(map[string]struct{})
-	}
-	r.mu.Unlock()
 
 	// ── Gate 12: Spread Guard ───────────────────────────────────────────────
 	spreadBps := r.redisFloat(ctx, fmt.Sprintf("book_spread:%s", symbol))
