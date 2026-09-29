@@ -18,6 +18,7 @@ type redisStore interface {
 	Get(ctx context.Context, key string) *redis.StringCmd
 	Del(ctx context.Context, keys ...string) *redis.IntCmd
 	Incr(ctx context.Context, key string) *redis.IntCmd
+	SetNX(ctx context.Context, key string, value interface{}, expiration time.Duration) *redis.BoolCmd
 	XAdd(ctx context.Context, a *redis.XAddArgs) *redis.StringCmd
 	// 1B.2 position-reconciliation primitives: execution-service maintains
 	// the fills ledger (lists), tracked symbols and open symbols (sets).

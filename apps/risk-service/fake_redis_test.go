@@ -20,19 +20,21 @@ type fakeRedis struct {
 	// Failure injection for durability tests. When set, the corresponding
 	// command returns the error instead of succeeding. Read under f.mu;
 	// tests must use the locked setters below.
-	failSetErr  error
-	failGetErr  error
-	failDelErr  error
-	failIncrErr error
+	failSetErr   error
+	failGetErr   error
+	failDelErr   error
+	failIncrErr  error
+	failSetNXErr error
 }
 
 // Locked failure-injection setters. Command methods may be called by
 // background goroutines (e.g. the boot-state retry loop), so direct field
 // writes from tests would race — the race detector catches them.
-func (f *fakeRedis) setFailSet(err error)  { f.mu.Lock(); defer f.mu.Unlock(); f.failSetErr = err }
-func (f *fakeRedis) setFailGet(err error)  { f.mu.Lock(); defer f.mu.Unlock(); f.failGetErr = err }
-func (f *fakeRedis) setFailDel(err error)  { f.mu.Lock(); defer f.mu.Unlock(); f.failDelErr = err }
-func (f *fakeRedis) setFailIncr(err error) { f.mu.Lock(); defer f.mu.Unlock(); f.failIncrErr = err }
+func (f *fakeRedis) setFailSet(err error)   { f.mu.Lock(); defer f.mu.Unlock(); f.failSetErr = err }
+func (f *fakeRedis) setFailGet(err error)   { f.mu.Lock(); defer f.mu.Unlock(); f.failGetErr = err }
+func (f *fakeRedis) setFailDel(err error)   { f.mu.Lock(); defer f.mu.Unlock(); f.failDelErr = err }
+func (f *fakeRedis) setFailIncr(err error)  { f.mu.Lock(); defer f.mu.Unlock(); f.failIncrErr = err }
+func (f *fakeRedis) setFailSetNX(err error) { f.mu.Lock(); defer f.mu.Unlock(); f.failSetNXErr = err }
 
 func newFakeRedis() *fakeRedis {
 	return &fakeRedis{
@@ -266,5 +268,26 @@ func (f *fakeRedis) LTrim(ctx context.Context, key string, start, stop int64) *r
 		f.lists[key] = append([]string{}, l[s:e+1]...)
 	}
 	cmd.SetVal("OK")
+	return cmd
+}
+
+// ── 1B.3 durable dedup primitive ────────────────────────────────────────────
+
+// SetNX implements atomic check-and-set. TTL expiry is not simulated —
+// tests assert presence/absence, which is what the dedup logic depends on.
+func (f *fakeRedis) SetNX(ctx context.Context, key string, value interface{}, expiration time.Duration) *redis.BoolCmd {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cmd := redis.NewBoolCmd(ctx)
+	if f.failSetNXErr != nil {
+		cmd.SetErr(f.failSetNXErr)
+		return cmd
+	}
+	if _, exists := f.kv[key]; exists {
+		cmd.SetVal(false)
+		return cmd
+	}
+	f.kv[key] = fmt.Sprintf("%v", value)
+	cmd.SetVal(true)
 	return cmd
 }

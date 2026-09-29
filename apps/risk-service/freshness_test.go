@@ -25,7 +25,7 @@ func testRiskEngine(t *testing.T) (*RiskEngine, *fakeRedis) {
 	// thresholds, which would trip gates unrelated to freshness.
 	return &RiskEngine{
 		redis:            fr,
-		seenSignalIDs:    make(map[string]struct{}),
+		dedupTTL:         time.Hour,
 		maxDailyLoss:     0.02,
 		maxDrawdown:      0.10,
 		maxPositions:     8,
