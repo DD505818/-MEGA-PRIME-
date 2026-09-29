@@ -61,7 +61,13 @@ func NewRiskEngine(redisAddr, brokers string) *RiskEngine {
 	if err != nil {
 		log.Fatalf("kafka consumer: %v", err)
 	}
-	c.SubscribeTopics([]string{"signals.raw"}, nil)
+	// 1B.4 topology: risk validates the FINAL signal — fused by
+	// fusion-engine and sized by capital-allocator. Subscribing to
+	// signals.sized (not signals.raw) is what eliminates the allocation
+	// race: Gate 14's notional/leverage/risk-per-trade checks run on the
+	// exact quantity execution-service will trade. See
+	// docs/signal-topology.md.
+	c.SubscribeTopics([]string{"signals.sized"}, nil)
 
 	p, err := kafka.NewProducer(kafkaTransport(kafka.ConfigMap{"bootstrap.servers": brokers}))
 	if err != nil {

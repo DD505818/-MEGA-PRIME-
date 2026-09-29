@@ -1,6 +1,10 @@
 // Capital Allocator — Kelly-fractional position sizing with HRP overlay.
-// Subscribes to signals.approved, computes optimal position size, and
-// publishes sized signals to signals.sized.
+// Subscribes to signals.fused (consensus signals from fusion-engine),
+// computes optimal position size, and publishes sized signals to
+// signals.sized for risk-service (AEGIS) validation. The allocator runs
+// BEFORE risk so Gate 14 validates the final sized quantity — this
+// ordering is what eliminates the allocation race; see
+// docs/signal-topology.md.
 package main
 
 import (
@@ -51,7 +55,7 @@ func NewAllocator(redisAddr, brokers string) *Allocator {
 	if err != nil {
 		log.Fatalf("allocator consumer: %v", err)
 	}
-	c.SubscribeTopics([]string{"signals.approved"}, nil)
+	c.SubscribeTopics([]string{"signals.fused"}, nil)
 
 	p, err := kafka.NewProducer(kafkaTransport(kafka.ConfigMap{"bootstrap.servers": brokers}))
 	if err != nil {
