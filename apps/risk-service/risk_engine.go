@@ -122,16 +122,45 @@ func (r *RiskEngine) validate(signal map[string]interface{}) (bool, string, floa
 		return false, "GATE4_BROKER_DOWN", 0
 	}
 
-	// ── Gate 5: Stale Market Data ───────────────────────────────────────────
+	// ── Gate 5: Stale Market Data (FAIL-CLOSED) ─────────────────────────────
+	// Freshness key: book_ts:<symbol> — millis epoch of the last book/price
+	// update for the symbol. Canonical contract: the market-data pipeline
+	// (wired in 1B.4) must SET this key on every book update.
+	//
+	// A missing, unparseable, zero, future, or stale timestamp REJECTS the
+	// signal. There is no "no data, assume fresh" path: a stale price feeding
+	// the risk engine is a direct path to a bad fill. The fail-closed action
+	// is refusing new intents at this gate (it does not flatten — flattening
+	// is the kill switch's job). Every fail-closed event is audited with the
+	// same three-layer discipline as the control plane (auditFreshnessFailClosed),
+	// no exceptions and no aggregation.
 	symbol, _ := signal["symbol"].(string)
 	bookTSKey := fmt.Sprintf("book_ts:%s", symbol)
 	bookTSStr := r.redisString(ctx, bookTSKey)
-	if bookTSStr != "" {
-		bookTS, _ := strconv.ParseInt(bookTSStr, 10, 64)
-		ageMs := time.Now().UnixMilli() - bookTS
-		if ageMs > r.staleBookSecs*1000 {
-			return false, fmt.Sprintf("GATE5_STALE_BOOK_%dms", ageMs), 0
+	maxAgeMs := r.staleBookMs(symbol)
+	nowMs := time.Now().UnixMilli()
+	failReason := ""
+	switch {
+	case bookTSStr == "":
+		failReason = "GATE5_NO_BOOK_TS"
+	default:
+		bookTS, perr := strconv.ParseInt(strings.TrimSpace(bookTSStr), 10, 64)
+		switch {
+		case perr != nil:
+			failReason = "GATE5_BAD_BOOK_TS"
+		case bookTS <= 0:
+			// Synthetic feeds publish timestamp: 0. A zero timestamp is not
+			// "very old data" — it is no data, and it fails closed.
+			failReason = "GATE5_ZERO_BOOK_TS"
+		case bookTS-nowMs > 60_000:
+			failReason = fmt.Sprintf("GATE5_FUTURE_BOOK_TS_%dms", bookTS-nowMs)
+		case nowMs-bookTS > maxAgeMs:
+			failReason = fmt.Sprintf("GATE5_STALE_BOOK_%dms", nowMs-bookTS)
 		}
+	}
+	if failReason != "" {
+		r.auditFreshnessFailClosed(symbol, failReason)
+		return false, failReason, 0
 	}
 
 	// ── Gate 6: Daily Loss Cap ──────────────────────────────────────────────
@@ -237,6 +266,33 @@ func (r *RiskEngine) validate(signal map[string]interface{}) (bool, string, floa
 	}
 
 	return true, "APPROVED", qty
+}
+
+// staleBookMs returns the maximum acceptable book age in milliseconds.
+// Default from STALE_BOOK_SECONDS (5s); per-symbol override via
+// STALE_BOOK_SECONDS_<SYMBOL> (e.g. STALE_BOOK_SECONDS_BTCUSDT=10) for
+// assets whose quote cadence legitimately differs.
+func (r *RiskEngine) staleBookMs(symbol string) int64 {
+	if v := os.Getenv("STALE_BOOK_SECONDS_" + symbol); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return int64(n) * 1000
+		}
+	}
+	if r.staleBookSecs > 0 {
+		return r.staleBookSecs * 1000
+	}
+	return 5 * 1000
+}
+
+// auditFreshnessFailClosed records EVERY Gate 5 fail-closed rejection with
+// the same three-layer discipline as control-plane actions (stdout, Redis
+// stream, TruthCore with gap records). No cooldown, no aggregation: the
+// standing rule is that every fail-closed event is audited, no exceptions.
+// (Post-1B.4, signals reaching risk are fused consensus events — low
+// volume — so per-event auditing does not flood the stream.)
+func (r *RiskEngine) auditFreshnessFailClosed(symbol, reason string) {
+	r.recordControlAudit("risk.gate5", "risk-engine", true, "fail_closed",
+		fmt.Sprintf("symbol=%s reason=%s", symbol, reason))
 }
 
 // checkCircuitBreakerCascade implements the three-level cascade.
