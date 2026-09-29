@@ -1,0 +1,82 @@
+name: Canonical Tree Guard
+
+# Phase 1A: the canonical platform is root apps/ + apps/web-ui.
+# omega-prime-delta/, omega-prime-hardened/, omega-prime-pro/ are quarantined:
+# they must not be built, deployed, or referenced by the active pipeline.
+# See docs/canonical-tree.md.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  guard:
+    name: Quarantined trees stay inactive
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Active entry points must not reference quarantined trees
+        run: |
+          set -e
+          for f in docker-compose.yml Makefile; do
+            for tree in omega-prime-delta omega-prime-hardened omega-prime-pro; do
+              if grep -q "$tree" "$f"; then
+                echo "FAIL: $f references quarantined tree $tree"
+                exit 1
+              fi
+            done
+          done
+          echo "docker-compose.yml and Makefile are clean of quarantined trees"
+
+      - name: Publish contexts must stay within apps/
+        run: |
+          set -e
+          python3 - <<'EOF'
+          import re, sys
+          text = open('.github/workflows/publish-ghcr.yml').read()
+          # Only matrix definitions ("- {name: ..., context: ...}"), not the
+          # "context: ${{ matrix.context }}" usage line.
+          contexts = re.findall(r'-\s*\{[^}]*context:\s*([^\s}]+)', text)
+          bad = [c for c in contexts
+                 if 'omega-prime-delta' in c or 'omega-prime-hardened' in c or 'omega-prime-pro' in c]
+          if bad:
+              print(f"FAIL: publish contexts reference quarantined trees: {bad}")
+              sys.exit(1)
+          non_apps = [c for c in contexts if not c.startswith('apps/')]
+          if non_apps:
+              print(f"FAIL: publish contexts outside canonical apps/: {non_apps}")
+              sys.exit(1)
+          print(f"publish contexts OK ({len(contexts)} services, all under apps/)")
+          EOF
+
+      - name: Quarantine markers must exist
+        run: |
+          set -e
+          for tree in omega-prime-delta omega-prime-hardened omega-prime-pro; do
+            test -f "$tree/QUARANTINED.md" || (echo "FAIL: $tree/QUARANTINED.md missing" && exit 1)
+          done
+          test -f docs/canonical-tree.md || (echo "FAIL: docs/canonical-tree.md missing" && exit 1)
+          echo "quarantine markers present"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - name: Run risk-service tests
+        run: |
+          set -e
+          cd apps/risk-service
+          go test ./... 2>&1 | tail -3
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Gateway auth tests (websocket-gateway)
+        run: |
+          set -e
+          cd apps/websocket-gateway
+          npm ci --no-audit --no-fund
+          npm test 2>&1 | tail -8

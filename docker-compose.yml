@@ -131,6 +131,8 @@ services:
       MAX_LEVERAGE: ${MAX_LEVERAGE:-2.0}
       MIN_CONFIDENCE: ${MIN_CONFIDENCE:-0.60}
       RISK_PER_TRADE: ${RISK_PER_TRADE:-0.005}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set - copy .env.example to .env and generate a secret}
+      TRUTHCORE_URL: http://truth-core:8084
     ports:
       - "8080:8080"
     restart: unless-stopped
@@ -226,7 +228,8 @@ services:
     environment:
       KAFKA_BROKERS: kafka:9092
       REDIS_URL: redis://redis:6379
-      JWT_SECRET: ${JWT_SECRET:-change-me}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set - copy .env.example to .env and generate a secret}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
       PORT: 3001
     ports:
       - "3001:3001"

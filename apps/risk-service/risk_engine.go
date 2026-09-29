@@ -13,12 +13,11 @@ import (
 	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
-	"github.com/go-redis/redis/v8"
 )
 
 // RiskEngine implements the 14-gate AEGIS Governor.
 type RiskEngine struct {
-	redis        *redis.Client
+	redis        redisStore
 	consumer     *kafka.Consumer
 	producer     *kafka.Producer
 	killSwitch   atomic.Bool
@@ -27,17 +26,30 @@ type RiskEngine struct {
 	mu            sync.Mutex
 	seenSignalIDs map[string]struct{} // duplicate detection
 
-	maxDailyLoss    float64
-	maxDrawdown     float64
-	maxPositions    int
-	maxNotional     float64
-	maxLeverage     float64
-	maxSpreadBps    float64
-	riskPerTrade    float64
-	minConfidence   float64
-	staleBookSecs   int64
+	// controlMu serializes kill/reset state transitions so concurrent
+	// /kill and /reset calls cannot interleave: the in-memory flag and the
+	// durable Redis flag are always written under this lock, so they cannot
+	// diverge. controlSeq is a monotonic sequence (backed by Redis INCR)
+	// that orders transitions for audit and post-incident review.
+	controlMu  sync.Mutex
+	controlSeq atomic.Int64
+
+	// stateVerified is false when the process booted without successfully
+	// reading the durable kill state (Redis unavailable). Until verified,
+	// the switch is assumed KILLED (fail closed); see restoreControlState.
+	stateVerified atomic.Bool
+
+	maxDailyLoss     float64
+	maxDrawdown      float64
+	maxPositions     int
+	maxNotional      float64
+	maxLeverage      float64
+	maxSpreadBps     float64
+	riskPerTrade     float64
+	minConfidence    float64
+	staleBookSecs    int64
 	maxAssetExposure float64
-	maxCorrelation  float64
+	maxCorrelation   float64
 }
 
 func NewRiskEngine(redisAddr, brokers string) *RiskEngine {
@@ -59,21 +71,21 @@ func NewRiskEngine(redisAddr, brokers string) *RiskEngine {
 	}
 
 	return &RiskEngine{
-		redis:          rdb,
-		consumer:       c,
-		producer:       p,
-		seenSignalIDs:  make(map[string]struct{}),
-		maxDailyLoss:   envFloat("MAX_DAILY_LOSS", 0.02),
-		maxDrawdown:    envFloat("MAX_DRAWDOWN", 0.10),
-		maxPositions:   envInt("MAX_POSITIONS", 8),
-		maxNotional:    envFloat("MAX_NOTIONAL_PER_TRADE", 50_000),
-		maxLeverage:    envFloat("MAX_LEVERAGE", 2.0),
-		maxSpreadBps:   envFloat("MAX_SPREAD_BPS", 20),
-		riskPerTrade:   envFloat("RISK_PER_TRADE", 0.005),
-		minConfidence:  envFloat("MIN_CONFIDENCE", 0.60),
-		staleBookSecs:  int64(envInt("STALE_BOOK_SECONDS", 5)),
+		seenSignalIDs:    make(map[string]struct{}),
+		redis:            rdb,
+		consumer:         c,
+		producer:         p,
+		maxDailyLoss:     envFloat("MAX_DAILY_LOSS", 0.02),
+		maxDrawdown:      envFloat("MAX_DRAWDOWN", 0.10),
+		maxPositions:     envInt("MAX_POSITIONS", 8),
+		maxNotional:      envFloat("MAX_NOTIONAL_PER_TRADE", 50_000),
+		maxLeverage:      envFloat("MAX_LEVERAGE", 2.0),
+		maxSpreadBps:     envFloat("MAX_SPREAD_BPS", 20),
+		riskPerTrade:     envFloat("RISK_PER_TRADE", 0.005),
+		minConfidence:    envFloat("MIN_CONFIDENCE", 0.60),
+		staleBookSecs:    int64(envInt("STALE_BOOK_SECONDS", 5)),
 		maxAssetExposure: envFloat("MAX_ASSET_EXPOSURE_PCT", 0.25),
-		maxCorrelation:  envFloat("MAX_PAIR_CORRELATION", 0.70),
+		maxCorrelation:   envFloat("MAX_PAIR_CORRELATION", 0.70),
 	}
 }
 
@@ -245,15 +257,60 @@ func (r *RiskEngine) checkCircuitBreakerCascade(drawdown, equity float64) {
 	}
 }
 
-func (r *RiskEngine) activateKillSwitch(reason string) {
-	if r.killSwitch.CompareAndSwap(false, true) {
-		log.Printf("KILL SWITCH ACTIVATED: %s", reason)
-		ctx := context.Background()
-		r.redis.Set(ctx, "kill_switch", "1", 0)
-		r.publishHalt(ctx, reason)
-		// Schedule kill confirmation check after 5s
-		go r.confirmKillCascade(reason)
+func (r *RiskEngine) activateKillSwitch(reason string) (alreadyActive bool, err error) {
+	r.controlMu.Lock()
+	defer r.controlMu.Unlock()
+	if r.killSwitch.Load() {
+		return true, nil // idempotent: already killed
 	}
+	ctx := context.Background()
+	seq, serr := r.nextControlSeq(ctx)
+	if serr != nil {
+		return false, fmt.Errorf("control seq: %w", serr)
+	}
+	// Durable write FIRST. If it fails, the in-memory flag is never set:
+	// a failed kill must never look successful.
+	if err := r.redis.Set(ctx, "kill_switch", "1", 0).Err(); err != nil {
+		return false, fmt.Errorf("durable kill write: %w", err)
+	}
+	r.killSwitch.Store(true)
+	r.controlSeq.Store(seq)
+	log.Printf("KILL SWITCH ACTIVATED: %s (seq=%d)", reason, seq)
+	r.publishHalt(ctx, reason)
+	// Schedule kill confirmation check after 5s
+	go r.confirmKillCascade(reason)
+	return false, nil
+}
+
+// resetKillSwitch clears the kill state. Requires the caller to hold control
+// authority (the /reset endpoint enforces admin role). Crash-safe order:
+// memory first, then the durable delete, so a mid-transition crash boots back
+// into KILLED (fail closed). A failed durable delete rolls the in-memory
+// flags back instead of reporting a reset that did not persist.
+func (r *RiskEngine) resetKillSwitch() error {
+	r.controlMu.Lock()
+	defer r.controlMu.Unlock()
+	ctx := context.Background()
+	seq, err := r.nextControlSeq(ctx)
+	if err != nil {
+		return fmt.Errorf("control seq: %w", err)
+	}
+	prevKill, prevCircuit := r.killSwitch.Load(), r.circuitBreak.Load()
+	r.killSwitch.Store(false)
+	r.circuitBreak.Store(false)
+	if err := r.redis.Del(ctx, "kill_switch").Err(); err != nil {
+		r.killSwitch.Store(prevKill)
+		r.circuitBreak.Store(prevCircuit)
+		return fmt.Errorf("durable reset: %w", err)
+	}
+	r.controlSeq.Store(seq)
+	return nil
+}
+
+// nextControlSeq returns the next monotonic control-plane sequence number.
+// Must be called with controlMu held.
+func (r *RiskEngine) nextControlSeq(ctx context.Context) (int64, error) {
+	return r.redis.Incr(ctx, controlSeqKey).Result()
 }
 
 func (r *RiskEngine) confirmKillCascade(reason string) {
@@ -273,6 +330,9 @@ func (r *RiskEngine) triggerCircuitBreaker(reason string) {
 }
 
 func (r *RiskEngine) publishHalt(ctx context.Context, reason string) {
+	if r.producer == nil {
+		return
+	}
 	topic := "emergency.halt"
 	msg, _ := json.Marshal(map[string]interface{}{
 		"reason": reason, "ts": time.Now().UnixMilli(),
@@ -284,6 +344,9 @@ func (r *RiskEngine) publishHalt(ctx context.Context, reason string) {
 }
 
 func (r *RiskEngine) publishAlert(ctx context.Context, level string, data map[string]interface{}) {
+	if r.producer == nil {
+		return
+	}
 	topic := "risk.alerts"
 	data["level"] = level
 	data["ts"] = time.Now().UnixMilli()
@@ -325,6 +388,9 @@ func (r *RiskEngine) run() {
 }
 
 func (r *RiskEngine) forward(topic string, signal map[string]interface{}) {
+	if r.producer == nil {
+		return
+	}
 	msg, _ := json.Marshal(signal)
 	_ = r.producer.Produce(&kafka.Message{
 		TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
