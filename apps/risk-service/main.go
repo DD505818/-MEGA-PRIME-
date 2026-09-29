@@ -172,6 +172,7 @@ func main() {
 	)
 	engine.restoreControlState()
 	go engine.run()
+	go engine.reconcilePositionsLoop() // 1B.2: 60s position reconcile, fail-closed on divergence
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", liveHandler)

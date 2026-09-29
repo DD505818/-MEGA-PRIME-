@@ -15,6 +15,8 @@ type fakeRedis struct {
 	mu      sync.Mutex
 	kv      map[string]string
 	streams map[string][]map[string]interface{}
+	sets    map[string]map[string]struct{}
+	lists   map[string][]string
 	// Failure injection for durability tests. When set, the corresponding
 	// command returns the error instead of succeeding. Read under f.mu;
 	// tests must use the locked setters below.
@@ -36,6 +38,8 @@ func newFakeRedis() *fakeRedis {
 	return &fakeRedis{
 		kv:      map[string]string{},
 		streams: map[string][]map[string]interface{}{},
+		sets:    map[string]map[string]struct{}{},
+		lists:   map[string][]string{},
 	}
 }
 
@@ -132,4 +136,135 @@ func (f *fakeRedis) streamEntries(stream string) []map[string]interface{} {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]map[string]interface{}{}, f.streams[stream]...)
+}
+
+// ── 1B.2 set/list primitives (position reconciliation) ─────────────────────
+
+func (f *fakeRedis) SAdd(ctx context.Context, key string, members ...interface{}) *redis.IntCmd {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cmd := redis.NewIntCmd(ctx)
+	s, ok := f.sets[key]
+	if !ok {
+		s = map[string]struct{}{}
+		f.sets[key] = s
+	}
+	var added int64
+	for _, m := range members {
+		ms := fmt.Sprintf("%v", m)
+		if _, exists := s[ms]; !exists {
+			s[ms] = struct{}{}
+			added++
+		}
+	}
+	cmd.SetVal(added)
+	return cmd
+}
+
+func (f *fakeRedis) SRem(ctx context.Context, key string, members ...interface{}) *redis.IntCmd {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cmd := redis.NewIntCmd(ctx)
+	s, ok := f.sets[key]
+	if !ok {
+		cmd.SetVal(0)
+		return cmd
+	}
+	var removed int64
+	for _, m := range members {
+		ms := fmt.Sprintf("%v", m)
+		if _, exists := s[ms]; exists {
+			delete(s, ms)
+			removed++
+		}
+	}
+	cmd.SetVal(removed)
+	return cmd
+}
+
+func (f *fakeRedis) SCard(ctx context.Context, key string) *redis.IntCmd {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cmd := redis.NewIntCmd(ctx)
+	cmd.SetVal(int64(len(f.sets[key])))
+	return cmd
+}
+
+func (f *fakeRedis) SMembers(ctx context.Context, key string) *redis.StringSliceCmd {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cmd := redis.NewStringSliceCmd(ctx)
+	out := make([]string, 0, len(f.sets[key]))
+	for m := range f.sets[key] {
+		out = append(out, m)
+	}
+	cmd.SetVal(out)
+	return cmd
+}
+
+func (f *fakeRedis) LPush(ctx context.Context, key string, values ...interface{}) *redis.IntCmd {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cmd := redis.NewIntCmd(ctx)
+	for _, v := range values {
+		f.lists[key] = append([]string{fmt.Sprintf("%v", v)}, f.lists[key]...)
+	}
+	cmd.SetVal(int64(len(f.lists[key])))
+	return cmd
+}
+
+// lrange resolves Redis LRANGE semantics (inclusive, negatives from tail).
+func (f *fakeRedis) LRange(ctx context.Context, key string, start, stop int64) *redis.StringSliceCmd {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cmd := redis.NewStringSliceCmd(ctx)
+	l := f.lists[key]
+	n := int64(len(l))
+	s, e := start, stop
+	if s < 0 {
+		s = n + s
+	}
+	if e < 0 {
+		e = n + e
+	}
+	if s < 0 {
+		s = 0
+	}
+	if e >= n {
+		e = n - 1
+	}
+	if s > e || n == 0 {
+		cmd.SetVal([]string{})
+		return cmd
+	}
+	cmd.SetVal(append([]string{}, l[s:e+1]...))
+	return cmd
+}
+
+func (f *fakeRedis) LTrim(ctx context.Context, key string, start, stop int64) *redis.StatusCmd {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cmd := redis.NewStatusCmd(ctx)
+	l := f.lists[key]
+	n := int64(len(l))
+	s, e := start, stop
+	if s < 0 {
+		s = n + s
+	}
+	if e < 0 {
+		e = n + e
+	}
+	if s < 0 {
+		s = 0
+	}
+	if e >= n {
+		e = n - 1
+	}
+	if s > e || n == 0 {
+		f.lists[key] = []string{}
+	} else {
+		f.lists[key] = append([]string{}, l[s:e+1]...)
+	}
+	cmd.SetVal("OK")
+	return cmd
 }

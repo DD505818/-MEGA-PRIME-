@@ -184,7 +184,13 @@ func (r *RiskEngine) validate(signal map[string]interface{}) (bool, string, floa
 	r.checkCircuitBreakerCascade(drawdown, equity)
 
 	// ── Gate 8: Max Open Positions ──────────────────────────────────────────
-	openPos := int(r.redisFloat(ctx, "portfolio:open_positions"))
+	// The count is SCARD of the portfolio:open_symbols set — the symbols
+	// with nonzero net position — maintained idempotently by
+	// execution-service on fill events. (1B.2: the old
+	// portfolio:open_positions counter was incremented on every fill and
+	// never decremented, while portfolio-service overwrote the same key
+	// with its own len() — two writers, two semantics, guaranteed drift.)
+	openPos := int(r.redis.SCard(ctx, "portfolio:open_symbols").Val())
 	if openPos >= r.maxPositions {
 		return false, "GATE8_MAX_POSITIONS_REACHED", 0
 	}

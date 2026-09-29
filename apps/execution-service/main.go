@@ -163,6 +163,21 @@ func (e *ExecutionEngine) handleHalt() {
 func (e *ExecutionEngine) processSignal(signal map[string]interface{}) {
 	order := e.signalToOrder(signal)
 
+	// Pre-submit kill check (1B.2). The kill flag is durable state owned by
+	// risk-service. A signal approved before a kill must not be submitted
+	// after it — this closes the approve→submit race window. Reactive
+	// cancellation of already-tracked orders still flows through
+	// emergency.halt → handleHalt.
+	if e.redis.Get(context.Background(), "kill_switch").Val() == "1" {
+		e.mu.Lock()
+		e.orders[order.ID] = order
+		e.mu.Unlock()
+		e.transition(order, StateCancelled)
+		order.Meta["cancel_reason"] = "KILL_SWITCH_ACTIVE_AT_SUBMIT"
+		log.Printf("ORDER %s: submission blocked — kill switch active at submit", order.ID[:8])
+		return
+	}
+
 	e.mu.Lock()
 	e.orders[order.ID] = order
 	e.mu.Unlock()
@@ -214,7 +229,7 @@ func (e *ExecutionEngine) paperFill(order *Order) (float64, error) {
 	if os.Getenv("PAPER_DETERMINISTIC") == "true" {
 		h := fnv.New64a()
 		_, _ = h.Write([]byte(order.SignalID))
-		jitter = (float64(h.Sum64()%20_001)/100_000_000.0)-0.0001
+		jitter = (float64(h.Sum64()%20_001) / 100_000_000.0) - 0.0001
 	}
 
 	if order.Side == "BUY" {
@@ -317,14 +332,57 @@ func (e *ExecutionEngine) updatePortfolio(order *Order) {
 		return
 	}
 	ctx := context.Background()
-	key := fmt.Sprintf("portfolio:position:%s", order.Symbol)
-	if order.Side == "BUY" {
-		e.redis.IncrByFloat(ctx, key, order.FilledQty)
-	} else {
-		e.redis.IncrByFloat(ctx, key, -order.FilledQty)
+	symbol := order.Symbol
+	key := fmt.Sprintf("portfolio:position:%s", symbol)
+
+	// 1. Append to the immutable fills ledger FIRST. The 60s reconciler in
+	// risk-service recomputes expected positions from this ledger, so a
+	// crash between this write and the position update below surfaces as a
+	// divergence (fail-closed: kill) rather than silent drift.
+	fillRec, _ := json.Marshal(map[string]interface{}{
+		"order_id":  order.ID,
+		"signal_id": order.SignalID,
+		"symbol":    symbol,
+		"side":      order.Side,
+		"qty":       order.FilledQty,
+		"ts":        time.Now().UnixMilli(),
+	})
+	ledgerKey := fmt.Sprintf("portfolio:fills:%s", symbol)
+	e.redis.LPush(ctx, ledgerKey, fillRec)
+	e.redis.LTrim(ctx, ledgerKey, 0, 9999)
+	e.redis.SAdd(ctx, "portfolio:tracked_symbols", symbol)
+
+	// 2. Update the net position quantity.
+	delta := order.FilledQty
+	if order.Side != "BUY" {
+		delta = -delta
 	}
-	// Update open positions count
-	e.redis.IncrBy(ctx, "portfolio:open_positions", 1)
+	newQty, err := e.redis.IncrByFloat(ctx, key, delta).Result()
+	if err != nil {
+		log.Printf("portfolio position update failed for %s: %v", symbol, err)
+		return
+	}
+
+	// 3. Maintain the open-symbols set idempotently. SADD/SREM have no
+	// counter to drift: the set always reflects "symbols with nonzero net
+	// position", and a close (qty back to ~0) removes the symbol on the same
+	// fill event that zeroed it. This replaces the old
+	// portfolio:open_positions counter, which was incremented on every fill
+	// and never decremented (and fought portfolio-service's SET overwrite
+	// of the same key with different semantics).
+	if isOpenPosition(newQty) {
+		e.redis.SAdd(ctx, "portfolio:open_symbols", symbol)
+	} else {
+		e.redis.SRem(ctx, "portfolio:open_symbols", symbol)
+	}
+}
+
+// positionQtyEpsilon treats dust quantities as a closed position.
+const positionQtyEpsilon = 1e-9
+
+// isOpenPosition reports whether a net quantity counts as an open position.
+func isOpenPosition(qty float64) bool {
+	return math.Abs(qty) > positionQtyEpsilon
 }
 
 // ── Algo Selection ────────────────────────────────────────────────────────────
