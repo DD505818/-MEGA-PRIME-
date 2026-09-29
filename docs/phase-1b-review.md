@@ -61,8 +61,10 @@ drift. Gate 8 decided on this number.
   Any divergence → audit + `risk.alerts` page + `activateKillSwitch`.
 - `apps/execution-service/main.go` `processSignal`: pre-submit kill check
   reads durable `kill_switch` before routing; on `1` the order goes
-  CANCELLED (`KILL_SWITCH_ACTIVE_AT_SUBMIT`). This closes the 1A.6 gap —
-  `docs/kill-switch-status.md` is now **ENFORCED**.
+  CANCELLED (`KILL_SWITCH_ACTIVE_AT_SUBMIT`). This narrows the 1A.6 gap —
+  `docs/kill-switch-status.md` is now **PARTIAL** (the check fails open on
+  Redis errors — `.Val()` ignores them; failing closed on store error is
+  open work).
 
 **Proving tests** (`reconcile_test.go`, 6 tests; `portfolio_test.go` in
 execution-service): healthy ledger/position/set agreement, injected
@@ -91,16 +93,24 @@ IDs). Crash between submit and record → redelivered signal approved twice
 **Fix** (`apps/risk-service/risk_engine.go` Gate 11). Atomic durable
 check-and-set: `SET risk:seen_signal:<id> 1 NX EX <DEDUP_TTL_SECONDS>`
 (default 24h) **inside validate, before** `signals.approved` is published.
-No check-then-set race between replicas; record survives restarts; the
-crash window between submit and record no longer exists. Redis
+No check-then-set race between replicas; record survives restarts. Redis
 unavailable → `GATE11_DEDUP_STORE_UNAVAILABLE` (fail closed: cannot prove
 uniqueness → reject; a dropped signal beats a duplicated position).
 
+**Remaining loss window (not exactly-once).** The record is written
+*before* `signals.approved` is published, so a crash after SET NX but
+before Kafka delivery loses the signal — redelivery is then rejected as
+a duplicate. This is duplicate prevention with an at-most-once loss
+window, not exactly-once execution. The proving test below demonstrates
+the record-before-publish ordering, not "crash between submit and
+record".
+
 **Proving tests** (`dedup_test.go`, 5 tests, `-race` green):
 first-seen/duplicate, restart durability (new engine, same Redis),
-crash-between-submit-and-record (record asserted present in Redis before
-any publish; redelivery rejected), store-down fail-closed, 32-goroutine
-concurrent duplicate → exactly 1 approval.
+crash-before-publish (record asserted present in Redis before any
+publish; redelivery rejected — proves at-most-once, not double-submit),
+store-down fail-closed, 32-goroutine concurrent duplicate → exactly 1
+approval.
 
 **Fail-closed audit entry.** Gate rejections flow to `signals.rejected`
 with `reject_reason`; store-unavailable is a hard reject, not a bypass.
