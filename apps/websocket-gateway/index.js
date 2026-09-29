@@ -16,8 +16,15 @@ const fs = require('fs');
 const { createClient } = require('redis');
 const WebSocket = require('ws');
 const express = require('express');
-const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
+const {
+  resolveJwtSecret,
+  verifyToken,
+  parseAllowedOrigins,
+  isWsOriginAllowed,
+  corsMiddleware,
+  GATEWAY_AUDIENCE,
+} = require('./auth');
 
 const KAFKA_BROKERS = (process.env.KAFKA_BROKERS || 'kafka:9092').split(',');
 const KAFKA_PROTOCOL = (process.env.KAFKA_SECURITY_PROTOCOL || 'PLAINTEXT').toUpperCase();
@@ -74,6 +81,9 @@ const clients = new Map();
 // ── HTTP + WS server ──────────────────────────────────────────────────────────
 
 const app = express();
+// CORS is restricted to ALLOWED_ORIGINS. When unset, no CORS headers are
+// emitted at all (fail closed) — browsers fall back to same-origin.
+app.use(corsMiddleware());
 app.get('/health', (req, res) => res.json({ status: 'live', clients: clients.size }));
 app.get('/health/live', (req, res) => res.json({ status: 'live' }));
 app.get('/health/ready', (req, res) => {
@@ -95,8 +105,16 @@ const server = app.listen(PORT, () => {
 const wss = new WebSocket.Server({ server, path: '/ws' });
 
 wss.on('connection', (ws, req) => {
+  // Browser-origin enforcement on upgrade: a present but unlisted Origin
+  // is rejected. (Absent Origin = non-browser tooling; JWT still required.)
+  if (!isWsOriginAllowed(req.headers.origin, WS_ALLOWED_ORIGINS)) {
+    ws.close(4003, 'Origin not allowed');
+    return;
+  }
   const token = extractToken(req);
-  if (!verifyToken(token)) {
+  // Audience is pinned: only tokens minted for this gateway authenticate.
+  const claims = verifyToken(JWT_SECRET, token, GATEWAY_AUDIENCE);
+  if (!claims) {
     ws.close(4001, 'Unauthorized');
     return;
   }
@@ -201,7 +219,7 @@ function wantsChannel(subscribed, topic) {
   return false;
 }
 
-// ── Auth helpers ──────────────────────────────────────────────────────────────
+// ── Token extraction ────────────────────────────────────────────────────────
 
 function extractToken(req) {
   const url = new URL(req.url, `http://localhost:${PORT}`);
@@ -212,15 +230,8 @@ function extractToken(req) {
   return null;
 }
 
-function verifyToken(token) {
-  if (!token) return false;
-  try {
-    jwt.verify(token, JWT_SECRET);
-    return true;
-  } catch {
-    return ALLOW_DEV_TOKEN && token === 'dev-token';
-  }
-}
+// NOTE: token verification lives in auth.js (verifyToken). The dev-token
+// bypass was removed: there is no way to connect without a valid JWT.
 
 // ── Startup ───────────────────────────────────────────────────────────────────
 

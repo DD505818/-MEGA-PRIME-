@@ -5,7 +5,7 @@ up:
 	docker-compose up -d --build
 	@echo "→ Web UI:    http://localhost:3000"
 	@echo "→ Risk API:  http://localhost:8080/status"
-	@echo "→ WS:        ws://localhost:3001/ws?token=dev-token"
+	@echo "→ WS:        ws://localhost:3001/ws (JWT required; see .env.example)"
 
 down:
 	docker-compose down -v
@@ -40,12 +40,18 @@ deploy-prod:
 chaos:
 	bash scripts/run_chaos.sh
 
+# Control plane is authenticated. Mint tokens with:
+#   JWT_SECRET=$$JWT_SECRET python3 scripts/mint_operator_token.py --role operator
+# /kill needs role=operator; /reset needs role=admin.
 kill:
+	@test -n "$$OPERATOR_TOKEN" || (echo "OPERATOR_TOKEN is not set (role=operator required)" && exit 1)
 	curl -s -X POST http://localhost:8080/kill -H 'Content-Type: application/json' \
+	     -H "Authorization: Bearer $$OPERATOR_TOKEN" \
 	     -d '{"reason":"manual-operator"}' | jq .
 
 reset-kill:
-	curl -s -X POST http://localhost:8080/reset | jq .
+	@test -n "$$ADMIN_TOKEN" || (echo "ADMIN_TOKEN is not set (role=admin required)" && exit 1)
+	curl -s -X POST http://localhost:8080/reset -H "Authorization: Bearer $$ADMIN_TOKEN" | jq .
 
 status:
 	curl -s http://localhost:8080/status | jq .
