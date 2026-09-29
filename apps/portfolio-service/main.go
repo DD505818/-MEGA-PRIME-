@@ -209,7 +209,14 @@ func (ps *PortfolioService) publishState(ctx context.Context) {
 	ps.redis.Set(ctx, "portfolio:equity", ps.portfolio.Equity, 0)
 	ps.redis.Set(ctx, "portfolio:peak_equity", ps.portfolio.PeakEquity, 0)
 	ps.redis.Set(ctx, "portfolio:daily_pnl", ps.portfolio.DailyPnL, 0)
-	ps.redis.Set(ctx, "portfolio:open_positions", len(ps.portfolio.Positions), 0)
+	// NOTE (1B.2): portfolio:open_positions is no longer published here.
+	// The open-position count is derived from the portfolio:open_symbols
+	// set (symbols with nonzero net position), maintained idempotently by
+	// execution-service on fill events. This service previously overwrote
+	// the same key with its own len(Positions) while execution-service
+	// incremented it per fill with no decrement — two writers, two
+	// semantics, guaranteed drift. Gate 8 now reads SCARD
+	// portfolio:open_symbols.
 	ps.redis.Set(ctx, "portfolio:drawdown", ps.portfolio.Drawdown, 0)
 }
 

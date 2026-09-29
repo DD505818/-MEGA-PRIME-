@@ -19,6 +19,15 @@ type redisStore interface {
 	Del(ctx context.Context, keys ...string) *redis.IntCmd
 	Incr(ctx context.Context, key string) *redis.IntCmd
 	XAdd(ctx context.Context, a *redis.XAddArgs) *redis.StringCmd
+	// 1B.2 position-reconciliation primitives: execution-service maintains
+	// the fills ledger (lists), tracked symbols and open symbols (sets).
+	SAdd(ctx context.Context, key string, members ...interface{}) *redis.IntCmd
+	SRem(ctx context.Context, key string, members ...interface{}) *redis.IntCmd
+	SCard(ctx context.Context, key string) *redis.IntCmd
+	SMembers(ctx context.Context, key string) *redis.StringSliceCmd
+	LPush(ctx context.Context, key string, values ...interface{}) *redis.IntCmd
+	LRange(ctx context.Context, key string, start, stop int64) *redis.StringSliceCmd
+	LTrim(ctx context.Context, key string, start, stop int64) *redis.StatusCmd
 }
 
 // controlSeqKey holds the monotonic control-plane sequence (kill/reset
