@@ -1,7 +1,12 @@
-# Kill Switch — Enforcement Status: ENFORCED
+# Kill Switch — Enforcement Status: PARTIAL
 
 The kill switch **sets** a durable flag correctly (Phase 1A) and — as of
-Phase 1B.2 — **enforces** it on every path that can submit an order.
+Phase 1B.2 — **enforces** it on the risk-service validation path (Gate 1)
+and reactively in execution-service (`emergency.halt` → cancel tracked
+orders). The 1B.2 pre-submit check closes the approve→submit race window
+when Redis is reachable, but it **fails open on Redis errors** (see the
+pre-submit row below). Until that gap is closed, this is PARTIAL
+enforcement, not ENFORCED.
 
 ## Who sets the flag
 
@@ -24,10 +29,12 @@ durable state is read).
 |--------|----------|
 | risk-service Gate 1 (`validate`) | Reads the in-memory flag on every signal. New validations stop immediately after a kill. ✅ |
 | execution-service `handleHalt` | Reacts to `emergency.halt` by cancelling routed / partially-filled / approved orders and writing `kill:confirmed`. Reactive. ✅ |
-| execution-service `processSignal` | **Pre-submit check (1B.2):** reads the durable `kill_switch` flag before routing/filling. On `1`, the order transitions to CANCELLED with `cancel_reason=KILL_SWITCH_ACTIVE_AT_SUBMIT` and is never submitted. This closes the approve→submit race window. ✅ |
+| execution-service `processSignal` | **Pre-submit check (1B.2):** reads the durable `kill_switch` flag before routing/filling. On `1`, the order transitions to CANCELLED with `cancel_reason=KILL_SWITCH_ACTIVE_AT_SUBMIT` and is never submitted. This closes the approve→submit race window. ⚠️ **Fail-open gap:** the check uses `.Val()` and ignores Redis errors — a Redis outage at submit time reads as "not killed" and the order proceeds. Fix: fail closed on store error (open). |
 
 ## Residual notes
 
+- **Open (1B.2 gap):** the pre-submit check fails open on Redis errors.
+  Until it fails closed on store error, enforcement status is PARTIAL.
 - The pre-submit check reads the durable Redis flag rather than relying on
   the `emergency.halt` Kafka message, so it holds even if Kafka delivery lags
   or the execution-service restarted after the halt broadcast.
