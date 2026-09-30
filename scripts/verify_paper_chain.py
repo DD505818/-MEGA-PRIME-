@@ -136,7 +136,12 @@ def main() -> None:
     )
     if live_attempt.returncode == 0:
         raise RuntimeError("execution service accepted LIVE mode before certification")
-    if "LIVE execution is disabled" not in live_attempt.stderr:
+    guard_text = live_attempt.stderr.lower()
+    if not (
+        "live" in guard_text
+        and ("locked" in guard_text or "disabled" in guard_text)
+        and ("modelock" in guard_text or "refusing to start" in guard_text)
+    ):
         raise RuntimeError(f"unexpected LIVE guard failure: {live_attempt.stderr}")
 
     now_ms = str(int(time.time() * 1000))
