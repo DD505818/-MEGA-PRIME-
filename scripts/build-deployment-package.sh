@@ -154,11 +154,18 @@ rsync -a "${RSYNC_EXCLUDES[@]}" "$ROOT/.github/workflows/" "$STAGE/Deployment-To
 require_path ".env.example"
 cp "$ROOT/.env.example" "$STAGE/Deployment-Tools/.env.example"
 
-# Preserve the canonical Compose file and generate a categorized-package variant.
+# Preserve the canonical Compose file and a root-like build context for Go
+# services that depend on shared local modules under apps/.
 require_path "docker-compose.yml"
 cp "$ROOT/docker-compose.yml" "$STAGE/Deployment-Tools/docker-compose.source.yml"
+mkdir -p "$STAGE/Deployment-Tools/source"
+rsync -a "${RSYNC_EXCLUDES[@]}" "$ROOT/apps/" "$STAGE/Deployment-Tools/source/apps/"
+if [[ -f "$ROOT/.dockerignore" ]]; then
+  cp "$ROOT/.dockerignore" "$STAGE/Deployment-Tools/source/.dockerignore"
+fi
 
 sed \
+  -e 's#context: \.#context: ./source#' \
   -e 's#build: \./apps/market-data-service#build: ../Core-Trading-Scripts/apps/market-data-service#' \
   -e 's#build: \./apps/feature-engine#build: ../Core-Trading-Scripts/apps/feature-engine#' \
   -e 's#build: \./apps/agent-service#build: ../Core-Trading-Scripts/apps/agent-service#' \
