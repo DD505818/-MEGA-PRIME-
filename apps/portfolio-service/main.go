@@ -294,9 +294,9 @@ func jsonF64(v interface{}) (float64, bool) {
 }
 
 func main() {
-	// PAPER/LIVE lock: fail closed unless explicitly in paper mode.
-	// LIVE is locked — no configuration can enable it.
-	modelock.RequirePaper("portfolio-service")
+	// PAPER/LIVE contract: startup succeeds only for one unambiguous,
+	// fully gated runtime mode. Invalid combinations fail closed.
+	modelock.RequireMode("portfolio-service")
 
 	svc := NewPortfolioService(
 		os.Getenv("REDIS_URL"),
