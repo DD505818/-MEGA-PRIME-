@@ -43,6 +43,10 @@ func (f *fakeServer) append(eventType string, payload interface{}) Entry {
 
 func (f *fakeServer) handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("/health/ready", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"ready"}`))
+	})
 	mux.HandleFunc("/append", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			EventType string          `json:"event_type"`
@@ -101,6 +105,14 @@ func testClient(t *testing.T, f *fakeServer) *Client {
 func seedChain(f *fakeServer, n int) {
 	for i := 0; i < n; i++ {
 		f.append(EventApprovalIssued, map[string]interface{}{"i": i})
+	}
+}
+
+func TestReady(t *testing.T) {
+	f := &fakeServer{}
+	c := testClient(t, f)
+	if err := c.Ready(context.Background()); err != nil {
+		t.Fatalf("ready: %v", err)
 	}
 }
 
