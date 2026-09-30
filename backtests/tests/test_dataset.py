@@ -97,3 +97,13 @@ def test_crossed_tick_rejected(tmp_path: Path):
     df.to_csv(source, index=False)
     with pytest.raises(DataQualityError, match="ask < bid"):
         seal_snapshot(source, tmp_path / "out", source_name="fixture")
+
+
+def test_unix_millisecond_timestamps_are_not_misread_as_nanoseconds(tmp_path: Path):
+    df = ticks()
+    df["timestamp"] = (pd.to_datetime(df["timestamp"], utc=True).astype("int64") // 1_000_000)
+    source = tmp_path / "ticks-ms.csv"
+    df.to_csv(source, index=False)
+    out = tmp_path / "snapshot"
+    manifest = seal_snapshot(source, out, source_name="market.raw")
+    assert manifest["quality"]["start"].startswith("2026-01-01T")
