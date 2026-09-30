@@ -139,7 +139,7 @@ def main() -> None:
         "docker", "compose", "exec", "-T", "kafka",
         "kafka-console-producer",
         "--bootstrap-server", "kafka:9092",
-        "--topic", "signals.raw",
+        "--topic", "signals.sized",
         input_text=json.dumps(SIGNAL) + "\n",
     )
 
@@ -218,21 +218,31 @@ def main() -> None:
         raise RuntimeError(f"reconciliation mismatch: {reconciliation}")
 
     verification = request_json("http://127.0.0.1:8084/verify")
-    if not verification.get("valid") or verification.get("verified_entries", 0) < 6:
+    # Six PAPER proof events plus the automatic immutable authority/execution
+    # lineage: approval_issued -> order_submitted -> fill.
+    if not verification.get("valid") or verification.get("verified_entries", 0) < 9:
         raise RuntimeError(f"TruthCore verification failed: {verification}")
     recent = request_json("http://127.0.0.1:8084/recent")
-    expected_events = [
+    observed_events = [entry["event_type"] for entry in reversed(recent)]
+    required_subsequence = [
         "paper.market_snapshot",
         "paper.proposal",
+        "aegis.approval_issued",
+        "vulture.order_submitted",
+        "vulture.fill",
         "paper.risk_approved",
         "paper.fill",
         "paper.position",
         "paper.reconciliation",
     ]
-    observed_events = [entry["event_type"] for entry in reversed(recent[:6])]
-    if observed_events != expected_events:
+    cursor = 0
+    for event in observed_events:
+        if cursor < len(required_subsequence) and event == required_subsequence[cursor]:
+            cursor += 1
+    if cursor != len(required_subsequence):
         raise RuntimeError(
-            f"TruthCore lifecycle mismatch: {observed_events} != {expected_events}"
+            f"TruthCore lifecycle missing ordered evidence: "
+            f"observed={observed_events}, required={required_subsequence}"
         )
 
     result = {
