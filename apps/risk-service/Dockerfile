@@ -8,7 +8,7 @@ RUN go version && go mod download && go mod verify
 RUN CGO_ENABLED=1 go build -tags musl -trimpath -o risk-service . && go version -m risk-service
 
 FROM alpine:3.24
-RUN apk add --no-cache ca-certificates
+RUN apk upgrade --no-cache && apk add --no-cache ca-certificates
 COPY --from=builder /src/apps/risk-service/risk-service /usr/local/bin/risk-service
 USER 65532:65532
 CMD ["/usr/local/bin/risk-service"]
