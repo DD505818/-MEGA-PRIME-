@@ -4,7 +4,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from backtests.lab.dataset import DataQualityError, seal_snapshot, verify_snapshot
+from validation_lab.dataset import DataQualityError, seal_snapshot, verify_snapshot
 
 
 def bars(n=120):

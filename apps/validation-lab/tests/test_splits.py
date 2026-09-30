@@ -1,7 +1,7 @@
 
 import pandas as pd
 
-from backtests.lab.splits import purged_walk_forward
+from validation_lab.splits import purged_walk_forward
 
 
 def test_purged_walk_forward_has_strict_gap_and_no_overlap():

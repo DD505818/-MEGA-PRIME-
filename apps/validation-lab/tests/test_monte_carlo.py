@@ -1,7 +1,7 @@
 
 import numpy as np
 
-from backtests.lab.monte_carlo import empirical_block_bootstrap
+from validation_lab.bootstrap import empirical_block_bootstrap
 
 
 def test_bootstrap_reproducible_with_fixed_seed():

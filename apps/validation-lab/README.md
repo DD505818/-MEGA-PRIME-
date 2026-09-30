@@ -13,8 +13,38 @@ the separate independent certification program).
 ```bash
 cd apps/validation-lab
 pip install -e .            # numpy, pandas, scipy only
-python -m pytest tests/ -q  # 32 unit tests, synthetic data, fast
+python -m pytest tests/ -q  # unit tests, synthetic data, fast
 ```
+
+## Canonical layout
+
+This package is the **single canonical validation lab**. The gauntlet
+(`lab.py`) is what MIDAS consumes; the research tooling consolidated from
+the former `backtests/lab/` lives alongside it so there is exactly one
+implementation of each shared statistic. `backtests/lab/` now contains
+only thin re-export shims — new code imports `validation_lab` directly.
+
+| Module | Contents |
+|---|---|
+| `lab.py` | 7-stage fail-fast gauntlet + JSON report (the MIDAS contract) |
+| `data.py` | Frozen venue CSV loading with SHA-256 manifest verification |
+| `dataset.py` | Snapshot sealing: schema detection (bars/ticks), hard quality gate, canonical CSV + `manifest.json` |
+| `edge_input.py` | Load only verified sealed snapshots for edge search |
+| `splits.py` | Purged walk-forward fold boundaries (anchored/rolling, purge + embargo, timestamp metadata) |
+| `walkforward.py` | Purged K-fold CV index splits + per-fold OOS scoring (gauntlet stage 3) |
+| `metrics.py` | Sharpe, Sortino, max drawdown, profit factor, total/annualized return, causal strategy returns, per-candidate metric table |
+| `overfit.py` | Deflated Sharpe (ratio + research probability), probabilistic Sharpe, CSCV/PBO, parameter sensitivity, minimum backtest length |
+| `bootstrap.py` | Stationary + circular-block Sharpe CIs; empirical contiguous-block path bootstrap (terminal return / drawdown / ruin) |
+| `montecarlo.py` | Parametric Monte Carlo: Student-t fat tails, 2-state regime switching |
+| `nulls.py` | Sign-flip permutation, random-timing, buy-and-hold null tests |
+| `costs.py` | After-cost accounting (fees/spread/funding) with 1x/2x/3x stress |
+| `cli.py` | `omega-validation-lab` research CLI: `prepare` / `verify` / `folds` / `evaluate` |
+
+Note the two split generators are different tools, not duplicates:
+`splits.purged_walk_forward` produces time-ordered train/test fold
+*boundaries* for edge search, while `walkforward.purged_cv_splits`
+produces purged K-fold *index splits* used to score the gauntlet's
+out-of-sample Sharpe.
 
 ## API
 

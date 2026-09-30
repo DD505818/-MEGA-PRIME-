@@ -1,8 +1,8 @@
 
 import numpy as np
 
-from backtests.lab.statistics import (
-    candidate_metrics,
+from validation_lab.metrics import candidate_metrics
+from validation_lab.overfit import (
     cscv_probability_of_backtest_overfitting,
     deflated_sharpe_probability,
 )
