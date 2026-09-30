@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import subprocess
 import time
 import urllib.error
@@ -69,10 +70,19 @@ def wait_json(url: str, predicate, timeout: int = 120):
 
 
 def audit(event_type: str, payload: object) -> object:
-    return request_json(
+    secret = os.environ.get("TRUTHCORE_WRITE_SECRET", "")
+    body = json.dumps({"event_type": event_type, "payload": payload}).encode()
+    req = urllib.request.Request(
         "http://127.0.0.1:8084/append",
-        {"event_type": event_type, "payload": payload},
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {secret}",
+        },
+        method="POST",
     )
+    with urllib.request.urlopen(req, timeout=5) as response:
+        return json.load(response)
 
 
 def main() -> None:
