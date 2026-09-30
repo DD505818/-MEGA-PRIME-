@@ -50,6 +50,26 @@ def _iso_utc(value: pd.Timestamp) -> str:
     return value.isoformat().replace("+00:00", "Z")
 
 
+def _parse_timestamps(values: pd.Series) -> pd.Series:
+    numeric = pd.to_numeric(values, errors="coerce")
+    if numeric.notna().all():
+        magnitude = float(numeric.abs().median())
+        if magnitude >= 1e17:
+            unit = "ns"
+        elif magnitude >= 1e14:
+            unit = "us"
+        elif magnitude >= 1e11:
+            unit = "ms"
+        elif magnitude >= 1e8:
+            unit = "s"
+        else:
+            raise DataQualityError(
+                "numeric timestamps do not look like Unix seconds/ms/us/ns"
+            )
+        return pd.to_datetime(numeric, unit=unit, utc=True, errors="coerce")
+    return pd.to_datetime(values, utc=True, errors="coerce")
+
+
 def detect_schema(frame: pd.DataFrame) -> str:
     cols = set(frame.columns)
     if set(TICK_COLUMNS).issubset(cols):
@@ -78,7 +98,7 @@ def _validate_common(
         raise DataQualityError(f"dataset has {len(frame)} rows; minimum is {min_rows}")
 
     df = frame.loc[:, columns].copy()
-    ts = pd.to_datetime(df["timestamp"], utc=True, errors="coerce")
+    ts = _parse_timestamps(df["timestamp"])
     if ts.isna().any():
         raise DataQualityError(f"{int(ts.isna().sum())} rows have invalid timestamps")
     df["timestamp"] = ts
