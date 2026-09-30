@@ -4,10 +4,11 @@ Every signal from every agent passes through validate() before reaching
 the AEGIS risk engine. Gates are ordered from cheapest to most expensive.
 """
 from __future__ import annotations
-import os
 import time
 import uuid
 from typing import Optional, Tuple
+
+from modelock import current_mode
 
 REQUIRED_KEYS = {
     "signal_id", "strategy_id", "symbol", "side",
@@ -15,7 +16,6 @@ REQUIRED_KEYS = {
 }
 VALID_SIDES = {"BUY", "SELL", "MAKER"}
 VALID_MODES = {"paper", "live"}
-LIVE_MODE = os.getenv("PAPER_MODE", "true").lower() != "true"
 
 
 def validate(signal: dict) -> Tuple[bool, str]:
@@ -30,14 +30,17 @@ def validate(signal: dict) -> Tuple[bool, str]:
     if signal["side"] not in VALID_SIDES:
         return False, f"INVALID_SIDE:{signal['side']}"
 
-    # Gate 3 — mode consistency with env
-    signal_mode = signal.get("mode", "paper")
+    # Gate 3 — mode consistency with canonical runtime contract.
+    # Never mutate/promote a signal between environments.
+    signal_mode = signal.get("mode", "")
     if signal_mode not in VALID_MODES:
         return False, f"INVALID_MODE:{signal_mode}"
-    if signal_mode == "live" and not LIVE_MODE:
-        return False, "LIVE_SIGNAL_IN_PAPER_ENV"
-    if signal_mode == "paper" and LIVE_MODE:
-        signal["mode"] = "live"  # promote to live in live env
+    try:
+        runtime_mode = current_mode()
+    except RuntimeError:
+        return False, "RUNTIME_MODE_INVALID"
+    if signal_mode != runtime_mode:
+        return False, f"MODE_MISMATCH:{signal_mode}!={runtime_mode}"
 
     # Gate 4 — UUID format
     try:
