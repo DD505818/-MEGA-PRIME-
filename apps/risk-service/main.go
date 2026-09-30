@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-redis/redis/v8"
 	"github.com/google/uuid"
+	"github.com/omega-prime-delta/approval"
 	"github.com/omega-prime-delta/modelock"
 )
 
@@ -171,10 +172,19 @@ func main() {
 		log.Fatalf("control-plane auth: %v", err)
 	}
 
+	// Authority boundary: AEGIS signs every approval with this key. Without
+	// a valid signing key no approval can be issued, so the service must not
+	// start — otherwise validate() would forward unsigned signals.
+	approvalPriv, err := approval.ParsePrivateKey(os.Getenv("AEGIS_APPROVAL_PRIVKEY"))
+	if err != nil {
+		log.Fatalf("authority boundary: %v", err)
+	}
+
 	engine = NewRiskEngine(
 		os.Getenv("REDIS_URL"),
 		os.Getenv("KAFKA_BROKERS"),
 	)
+	engine.approvalPriv = approvalPriv
 	engine.restoreControlState()
 	go engine.run()
 	go engine.reconcilePositionsLoop() // 1B.2: 60s position reconcile, fail-closed on divergence
