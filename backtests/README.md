@@ -6,11 +6,13 @@ quality gate, be canonicalized, hashed, and sealed into a snapshot.
 
 ## Hard invariants
 
-- required schema: `timestamp,symbol,open,high,low,close,volume`
+- supported canonical schemas:
+  - bars: `timestamp,symbol,open,high,low,close,volume`
+  - ticks: `timestamp,exchange,symbol,price,bid,ask,volume` (matches `market.raw`)
 - UTC-normalizable timestamps
 - finite numeric values only
-- strictly positive OHLC, non-negative volume
-- valid OHLC envelopes (`low <= open/close <= high`)
+- strictly positive OHLC or price/bid/ask, non-negative volume
+- valid OHLC envelopes and non-crossed tick spreads (`ask >= bid`)
 - no duplicate `(symbol,timestamp)` keys
 - deterministic `timestamp,symbol` ordering
 - canonical SHA-256 hash recorded in `manifest.json`
@@ -34,11 +36,11 @@ python -m backtests.lab.cli prepare \
   --min-rows 10000
 ```
 
-This writes `bars.csv` plus `manifest.json`. The manifest binds the source
+This writes `market-data.csv` plus `manifest.json`. The manifest binds the source
 hash, canonical hash, schema version, symbol universe, time range, gap summary,
 and deterministic manifest ID.
 
-Out-of-order source rows fail closed. `--allow-reorder` exists only for data
+Schema is auto-detected by default. Out-of-order source rows fail closed. `--allow-reorder` exists only for data
 that has been reviewed and intentionally canonicalized.
 
 ## 2. Verify before every search run
