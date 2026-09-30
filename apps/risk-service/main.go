@@ -167,9 +167,9 @@ func (e *RiskEngine) retryControlStateRestore() {
 var controlRestoreRetryInterval = 10 * time.Second
 
 func main() {
-	// PAPER/LIVE lock: fail closed unless explicitly in paper mode.
-	// LIVE is locked — no configuration can enable it.
-	modelock.RequirePaper("risk-service")
+	// PAPER/LIVE contract: startup succeeds only for one unambiguous,
+	// fully gated runtime mode. Invalid combinations fail closed.
+	modelock.RequireMode("risk-service")
 
 	// Fail closed: the control plane must not start without operator auth.
 	secret, err := resolveOperatorSecret()
