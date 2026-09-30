@@ -34,18 +34,18 @@ jobs:
       max-parallel: 3
       matrix:
         include:
-          - {name: market-data-service, context: apps/market-data-service}
-          - {name: feature-engine, context: apps/feature-engine}
-          - {name: agent-service, context: apps/agent-service}
-          - {name: fusion-engine, context: apps/fusion-engine}
-          - {name: risk-service, context: apps/risk-service}
-          - {name: execution-service, context: apps/execution-service}
-          - {name: capital-allocator, context: apps/capital-allocator}
-          - {name: portfolio-service, context: apps/portfolio-service}
-          - {name: truth-core, context: apps/truth-core}
-          - {name: llm-service, context: apps/llm-service}
-          - {name: websocket-gateway, context: apps/websocket-gateway}
-          - {name: web-ui, context: apps/web-ui}
+          - {name: market-data-service, context: apps/market-data-service, dockerfile: Dockerfile}
+          - {name: feature-engine, context: apps/feature-engine, dockerfile: Dockerfile}
+          - {name: agent-service, context: apps/agent-service, dockerfile: Dockerfile}
+          - {name: fusion-engine, context: ., dockerfile: apps/fusion-engine/Dockerfile}
+          - {name: risk-service, context: ., dockerfile: apps/risk-service/Dockerfile}
+          - {name: execution-service, context: ., dockerfile: apps/execution-service/Dockerfile}
+          - {name: capital-allocator, context: ., dockerfile: apps/capital-allocator/Dockerfile}
+          - {name: portfolio-service, context: ., dockerfile: apps/portfolio-service/Dockerfile}
+          - {name: truth-core, context: ., dockerfile: apps/truth-core/Dockerfile}
+          - {name: llm-service, context: apps/llm-service, dockerfile: Dockerfile}
+          - {name: websocket-gateway, context: apps/websocket-gateway, dockerfile: Dockerfile}
+          - {name: web-ui, context: apps/web-ui, dockerfile: Dockerfile}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -61,6 +61,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
           push: true
           tags: ghcr.io/dd505818/omega-prime-${{ matrix.name }}:${{ env.IMAGE_TAG }}
           labels: |
