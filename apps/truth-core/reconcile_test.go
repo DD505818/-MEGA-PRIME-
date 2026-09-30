@@ -155,3 +155,72 @@ func TestReconcile_NonTradeEventsIgnored(t *testing.T) {
 		t.Fatalf("non-trade events broke reconciliation: %+v", r.Violations)
 	}
 }
+
+// A retried approval append produces two aegis.approval_issued entries for
+// the same approval_id (distinct entry ids). That must be counted and
+// flagged — never silently overwritten.
+func TestReconcile_DuplicateApprovalIssued(t *testing.T) {
+	entries := []AuditEntry{
+		mkEntry(1, eventApprovalIssued, approvalPayload()),
+		mkEntry(2, eventApprovalIssued, approvalPayload()), // retry duplicate
+		mkEntry(3, eventOrderSubmitted, orderPayload()),
+		mkEntry(4, eventFill, fillPayload()),
+	}
+	r := reconcileEntries(entries)
+	if r.Valid {
+		t.Fatal("duplicate approval issuance not detected")
+	}
+	if rulesOf(r)["DUPLICATE_APPROVAL_ISSUED"] != 1 {
+		t.Fatalf("wrong rules: %+v", r.Violations)
+	}
+	if r.ApprovalsIssued != 1 {
+		t.Fatalf("distinct approval count = %d, want 1", r.ApprovalsIssued)
+	}
+	for _, v := range r.Violations {
+		if v.Rule == "DUPLICATE_APPROVAL_ISSUED" && len(v.EntryIDs) != 2 {
+			t.Fatalf("duplicate violation should cite both entries: %+v", v)
+		}
+	}
+}
+
+// A submitted order whose fill was never audited (and never acknowledged)
+// is an unaudited trade: it must surface as a violation.
+func TestReconcile_OrderWithoutFillFlagged(t *testing.T) {
+	entries := []AuditEntry{
+		mkEntry(1, eventApprovalIssued, approvalPayload()),
+		mkEntry(2, eventOrderSubmitted, orderPayload()),
+		// no fill, no gap record
+	}
+	r := reconcileEntries(entries)
+	if r.Valid {
+		t.Fatal("order without fill not detected")
+	}
+	if rulesOf(r)["ORDER_WITHOUT_FILL"] != 1 {
+		t.Fatalf("wrong rules: %+v", r.Violations)
+	}
+}
+
+// A submitted order covered by an explicit operator-acknowledged
+// fill_audit_gap record is accounted for: no violation, but the gap stays
+// counted in the report forever.
+func TestReconcile_OrderWithGapRecordIsAccounted(t *testing.T) {
+	gap := map[string]interface{}{
+		"order_id": "o1", "approval_id": "a1",
+		"acknowledged_by": "op-test", "gap_record_persisted": true,
+	}
+	entries := []AuditEntry{
+		mkEntry(1, eventApprovalIssued, approvalPayload()),
+		mkEntry(2, eventOrderSubmitted, orderPayload()),
+		mkEntry(3, eventFillAuditGap, gap),
+	}
+	r := reconcileEntries(entries)
+	if !r.Valid {
+		t.Fatalf("gap-covered order reported violations: %+v", r.Violations)
+	}
+	if rulesOf(r)["ORDER_WITHOUT_FILL"] != 0 {
+		t.Fatalf("gap-covered order flagged as missing fill: %+v", r.Violations)
+	}
+	if r.FillAuditGaps != 1 {
+		t.Fatalf("FillAuditGaps = %d, want 1", r.FillAuditGaps)
+	}
+}

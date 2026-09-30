@@ -35,9 +35,13 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 CREATE INDEX IF NOT EXISTS idx_audit_log_event ON audit_log(event_type);
 CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log(created_at);
--- Immutability: the audit log is append-only at the SQL level too. Even a
--- superuser connection cannot UPDATE or DELETE rows; tampering must break
--- the hash chain to be invisible, and the chain is independently verifiable.
+-- Immutability: the audit log is append-only for the application role —
+-- this trigger rejects UPDATE/DELETE from any connection that cannot drop
+-- or disable triggers. A superuser CAN drop/disable this trigger, so the
+-- trigger alone is not the integrity guarantee. Integrity rests on
+-- independent recomputation of the hash chain (apps/truthclient) pinned to
+-- the externally persisted verified tip (risk-service keeps it in Redis):
+-- any rewrite, even with recomputed hashes, diverges from that anchor.
 CREATE OR REPLACE FUNCTION reject_audit_mutation() RETURNS trigger AS $$
 BEGIN
     RAISE EXCEPTION 'audit_log is append-only: % on id=% is forbidden', TG_OP, OLD.id;
@@ -326,7 +330,7 @@ func (tc *TruthCore) entriesHandler(w http.ResponseWriter, r *http.Request) {
 func (tc *TruthCore) fetchTradeEntries(ctx context.Context) ([]AuditEntry, error) {
 	rows, err := tc.db.Query(ctx,
 		`SELECT id, entry_id, event_type, payload, prev_hash, hash, created_at
-		 FROM audit_log WHERE event_type IN ('aegis.approval_issued','vulture.order_submitted','vulture.fill')
+		 FROM audit_log WHERE event_type IN ('aegis.approval_issued','vulture.order_submitted','vulture.fill','vulture.fill_audit_gap')
 		 ORDER BY id ASC`)
 	if err != nil {
 		return nil, err

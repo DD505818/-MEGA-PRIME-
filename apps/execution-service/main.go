@@ -103,10 +103,15 @@ type ExecutionEngine struct {
 	// fails closed — nothing is submitted.
 	truthClient *truthclient.Client
 
-	// auditHalted is set when a fill could not be recorded in TruthCore.
-	// The fill already happened (paper simulation), so it cannot be
-	// un-happened; instead all NEW submissions are refused until the audit
-	// spine is reachable again. No new trade without its audit record.
+	// auditHalted is the in-memory mirror of the durable audit halt
+	// (Redis: execution:audit_halted / execution:audit_gaps). It is set
+	// when a fill could not be recorded in TruthCore: the fill already
+	// happened (paper simulation), so it cannot be un-happened; instead
+	// all NEW submissions are refused until an operator backfills or
+	// acknowledges the gap via audit-halt-clear. The durable state is
+	// authoritative — auditHaltActive re-reads it on every submission,
+	// so the halt survives restarts and clears are observed live.
+	// See audit_halt.go.
 	auditHalted atomic.Bool
 }
 
@@ -276,28 +281,17 @@ func (e *ExecutionEngine) recordOrderSubmitted(order *Order, appr *approval.Appr
 	return err
 }
 
-// recordFill appends the fill to the TruthCore hash chain. A failure is
-// reported to the caller, which marks the audit gap and halts new
-// submissions — the fill cannot be un-happened.
+// recordFill appends the fill to the TruthCore hash chain (one attempt).
+// The caller (appendFillWithRetry / processSignal) owns the failure
+// policy: bounded retry, then a durable gap record + halt — the fill
+// cannot be un-happened. See audit_halt.go.
 func (e *ExecutionEngine) recordFill(order *Order) error {
 	if e.truthClient == nil {
 		return fmt.Errorf("truth client not configured")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	approvalID, _ := order.Meta["approval_id"].(string)
-	payload := map[string]interface{}{
-		"order_id":     order.ID,
-		"signal_id":    order.SignalID,
-		"strategy_id":  order.StrategyID,
-		"approval_id":  approvalID,
-		"symbol":       order.Symbol,
-		"side":         order.Side,
-		"quantity":     order.FilledQty,
-		"fill_price":   order.AvgFill,
-		"filled_at_ms": time.Now().UnixMilli(),
-	}
-	_, err := e.truthClient.Append(ctx, truthclient.EventFill, payload)
+	_, err := e.truthClient.Append(ctx, truthclient.EventFill, e.fillPayload(order))
 	return err
 }
 
@@ -381,8 +375,17 @@ func (e *ExecutionEngine) processSignal(signal map[string]interface{}) {
 	// Audit-or-no-trade: the order is durably recorded in the TruthCore
 	// hash chain BEFORE any routing or state. If the audit spine is down,
 	// the order is refused — no trade may exist without its audit record.
-	// A prior unaudited fill also halts all new submissions.
-	if e.auditHalted.Load() {
+	// A prior unaudited fill also halts all new submissions. The halt is
+	// durable (Redis): it survives restarts and is lifted only by the
+	// operator clear path, never by time or by this process forgetting.
+	// An unreadable halt state is UNKNOWN, which refuses too.
+	halted, haltErr := e.auditHaltActive(context.Background())
+	if haltErr != nil {
+		log.Printf("audit-halt: durable halt state unreadable: %v", haltErr)
+		e.refuse(signal, "AUDIT_STATE_UNKNOWN")
+		return
+	}
+	if halted {
 		e.refuse(signal, "AUDIT_HALTED")
 		return
 	}
@@ -429,18 +432,20 @@ func (e *ExecutionEngine) processSignal(signal map[string]interface{}) {
 		order.FilledQty = order.Qty
 		order.Slippage = ((fillPrice - order.LimitPrice) / order.LimitPrice) * 10_000
 		e.transition(order, StateFilled)
-		// The fill is durably recorded in the hash chain. If the append
-		// fails the fill cannot be un-happened, so the order is marked
-		// audit_gap and ALL new submissions halt until the audit spine
-		// recovers — audit-or-no-trade.
-		if err := e.recordFill(order); err != nil {
-			log.Printf("ORDER %s: FILL NOT AUDITED: %v — halting new submissions", order.ID[:8], err)
+		// The fill is durably recorded in the hash chain. The append gets
+		// a bounded retry; if it still fails the fill cannot be
+		// un-happened, so the order is marked audit_gap, a durable gap
+		// record is persisted, and ALL new submissions halt (durably,
+		// across restarts) until an operator backfills or acknowledges
+		// the gap — audit-or-no-trade. See audit_halt.go.
+		if err := e.appendFillWithRetry(order); err != nil {
+			log.Printf("ORDER %s: FILL NOT AUDITED after %d attempts: %v — halting new submissions (durable)", order.ID[:8], fillAuditAttempts, err)
 			order.Meta["audit_gap"] = true
 			order.Meta["audit_gap_error"] = err.Error()
-			e.auditHalted.Store(true)
-			// Structured critical log: the durable record of the gap.
-			// (execution-service has no alert topic; the halt is enforced
-			// in-process via auditHalted and visible in order Meta.)
+			e.engageAuditHalt(order, err)
+			// Structured critical log (execution-service has no alert
+			// topic; the halt is enforced via the durable Redis state,
+			// re-read on every submission, and visible in order Meta).
 			log.Printf("CRITICAL FILL_AUDIT_GAP order_id=%s approval_id=%s error=%q",
 				order.ID, order.Meta["approval_id"], err.Error())
 		}
@@ -669,6 +674,14 @@ func max2(a, b int) int {
 }
 
 func main() {
+	// Operator-only subcommand: clear a durable audit halt (backfill or
+	// acknowledge fill gaps, audited in TruthCore before any state is
+	// cleared). Not reachable from the HTTP mux, Kafka, or any order
+	// path. See audit_clear.go.
+	if len(os.Args) > 1 && os.Args[1] == "audit-halt-clear" {
+		os.Exit(runAuditHaltClear(os.Args[2:]))
+	}
+
 	eng := NewExecutionEngine(
 		os.Getenv("REDIS_URL"),
 		os.Getenv("KAFKA_BROKERS"),
@@ -680,6 +693,9 @@ func main() {
 		truthURL = "http://truth-core:8084"
 	}
 	eng.truthClient = truthclient.New(truthURL, os.Getenv("TRUTHCORE_WRITE_SECRET"))
+	// Durable audit halt: re-arm from Redis so a fill gap from before a
+	// restart keeps refusing submissions (fail closed if unreadable).
+	eng.restoreAuditHaltState()
 	go eng.run()
 
 	mux := http.NewServeMux()

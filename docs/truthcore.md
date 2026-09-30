@@ -107,8 +107,66 @@ open — they are observability, and the UI needs them.
   front/tail truncation is caught by the genesis anchor and head comparison.
 - The remaining trust root is the **shared write secret** (any holder can
   append — but cannot rewrite, and appends are attributable by event
-  content) and the **verifier's initial tip** (first full verification must
-  happen before compromise; in practice at deployment).
+  content) and the **verified-tip anchor** (see Durability below: the
+  first full verification establishes it in Redis; every later boot must
+  prove continuity against it).
+
+## Durability (post–Phase 4 fixes)
+
+### Durable audit halt (execution-service)
+
+A fill whose TruthCore append fails after bounded retry (3 attempts)
+persists a gap record and halts all new submissions **durably**:
+
+- Redis `execution:audit_gaps` — hash, field = order_id, value = JSON
+  `fillGapRecord` (order_id, canonical fill payload, attempts, last
+  error, recorded_at_ms).
+- Redis `execution:audit_halted` = `"1"`.
+
+Invariant: halted ⟺ flag set **or** ≥1 gap record exists. The state is
+re-read on every submission (`AUDIT_HALTED`; unreadable state refuses as
+`AUDIT_STATE_UNKNOWN`), so halts survive restarts and clears are observed
+live. Recovery is operator-only, via the service binary (never HTTP/UI):
+
+```bash
+execution-service audit-halt-clear --operator NAME [--acknowledge ORDER_ID ...]
+```
+
+It backfills each gap into TruthCore (`backfilled: true`); any gap not
+backfilled must be named with `--acknowledge`, which appends a
+`vulture.fill_audit_gap` record. Only after all gaps are accounted for
+does it append `vulture.audit_halt_cleared` and clear the Redis state —
+if that append fails, the halt stays. Reconcile flags any submitted
+order with neither fill nor gap record as `ORDER_WITHOUT_FILL`.
+
+### Durable chain anchor (risk-service)
+
+Every verified tip is persisted as an external anchor:
+
+- Redis `truthcore:verified_tip` — JSON `{"tip_id": …, "tip_hash": …}`.
+- Redis `truthcore:anchor_initialized` = `"1"` (epoch marker; never
+  deleted by the service).
+
+On boot and on every verify cycle, the live chain must prove it still
+descends from the anchor (head comparison plus the anchored entry
+itself). A rewrite, truncation, unparsable anchor, or a **missing**
+anchor after the epoch marker exists engages the kill switch — the
+current head is never silently adopted. A genuine first run (no epoch
+marker) establishes the anchor after its first full verification.
+
+**Recovery from a lost anchor** (e.g. Redis flush/failover): investigate
+first — the chain may have been tampered with. Only if the chain is
+confirmed good out-of-band, restart risk-service once with
+`TRUTHCORE_ACCEPT_CURRENT_TIP=1`: a missing anchor is then re-established
+only after a full independent verification; a proven mismatch still
+fails closed. Unset the variable afterwards.
+
+### Duplicate-append detection (truth-core)
+
+`/append` has no idempotency key, so a retried append can land twice.
+Execution is protected by VULTURE's atomic single-use claim; detection
+lives in reconcile: `DUPLICATE_APPROVAL_ISSUED` counts and flags every
+approval_id issued more than once, citing all entry ids.
 
 ## Deferred (not in Phase 4)
 

@@ -198,6 +198,11 @@ func main() {
 	}
 	engine.truthClient = truthclient.New(truthURL, os.Getenv("TRUTHCORE_WRITE_SECRET"))
 	engine.restoreControlState()
+	// Durable chain anchor: prove the live TruthCore chain still descends
+	// from the last verified tip persisted in Redis BEFORE the verify
+	// loop trusts anything. Mismatch (or a lost anchor) fails closed via
+	// the kill switch. See checkTruthAnchor in risk_engine.go.
+	engine.restoreTruthAnchor()
 	go engine.run()
 	go engine.reconcilePositionsLoop() // 1B.2: 60s position reconcile, fail-closed on divergence
 	go engine.truthVerifyLoop()        // Phase 4: 60s independent chain verification, kill on tamper

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
+	"github.com/go-redis/redis/v8"
 	"github.com/google/uuid"
 	"github.com/omega-prime-delta/approval"
 	"github.com/omega-prime-delta/modelock"
@@ -58,6 +59,21 @@ type RiskEngine struct {
 	// corruption of already-verified entries that leaves the tip intact.
 	truthLastFull time.Time
 	truthMu      sync.Mutex
+
+	// truthAnchorOK is true once the externally persisted verified tip
+	// (Redis, see truthAnchorKey) has been loaded and the live chain
+	// proven to descend from it — or established by this process after a
+	// successful verification. Until then, verification results are not
+	// trusted: a restarted verifier must never silently adopt a chain
+	// whose tip was rewritten while it was down.
+	truthAnchorOK bool
+	// truthAnchorKillSent dedupes the critical anchor-failure alert.
+	truthAnchorKillSent bool
+	// truthAcceptCurrentTip is the operator's one-shot re-anchor arm
+	// (TRUTHCORE_ACCEPT_CURRENT_TIP=1): a MISSING anchor — and only a
+	// missing one — may be re-established after a full independent
+	// verification. It never waives a proven mismatch.
+	truthAcceptCurrentTip bool
 
 	// stateVerified is false when the process booted without successfully
 	// reading the durable kill state (Redis unavailable). Until verified,
@@ -118,6 +134,10 @@ func NewRiskEngine(redisAddr, brokers string) *RiskEngine {
 		dedupTTL:         time.Duration(envInt("DEDUP_TTL_SECONDS", 86400)) * time.Second,
 		maxAssetExposure: envFloat("MAX_ASSET_EXPOSURE_PCT", 0.25),
 		maxCorrelation:   envFloat("MAX_PAIR_CORRELATION", 0.70),
+
+		// Operator one-shot re-anchor arm (see checkTruthAnchor). Read
+		// once at startup; changing it requires a restart, deliberately.
+		truthAcceptCurrentTip: os.Getenv("TRUTHCORE_ACCEPT_CURRENT_TIP") == "1",
 	}
 }
 
@@ -513,6 +533,204 @@ func (r *RiskEngine) recordApprovalIssued(a *approval.Approval) error {
 	return err
 }
 
+// ── Durable chain anchor (TruthCore durability fix #1) ────────────────────
+//
+// Independent verification alone has a restart hole: the verified tip
+// used to live only in this process's memory, so after a restart the
+// first full verification would happily adopt a chain whose history had
+// been rewritten (consistently re-hashed) while the service was down.
+// The fix is an external anchor: every verified tip is persisted to
+// Redis, and before any verification is trusted the live chain must
+// prove it still descends from the persisted anchor. A mismatch — or an
+// anchor that existed and is now missing — engages the kill switch. The
+// anchor can only be (re)established by an explicit operator action.
+const (
+	// truthAnchorKey holds the last verified chain tip as JSON:
+	// {"tip_id": <int64>, "tip_hash": "<hex>"}.
+	truthAnchorKey = "truthcore:verified_tip"
+	// truthAnchorEpochKey is set the first time an anchor is persisted
+	// and never deleted by the service. It distinguishes "genuine first
+	// run, no anchor yet" from "anchor existed and was lost".
+	truthAnchorEpochKey = "truthcore:anchor_initialized"
+)
+
+type anchorCheckResult int
+
+const (
+	// anchorUnresolved: the check could not complete (Redis/TruthCore
+	// unreachable). Verification is skipped and retried next cycle;
+	// nothing is trusted in the meantime.
+	anchorUnresolved anchorCheckResult = iota
+	// anchorResolvedOK: continuity proven, or genuine first run.
+	anchorResolvedOK
+	// anchorBlockedPoison: proven mismatch or lost anchor. The kill
+	// switch has been engaged; verification stays blocked.
+	anchorBlockedPoison
+	// anchorDeferredReanchor: anchor missing but the operator armed the
+	// one-shot re-anchor. Verification may proceed; a successful full
+	// pass below re-establishes the anchor.
+	anchorDeferredReanchor
+)
+
+type truthAnchor struct {
+	TipID   int64  `json:"tip_id"`
+	TipHash string `json:"tip_hash"`
+}
+
+// persistTruthAnchor stores the freshly verified tip as the external
+// anchor. Both keys are written together: the epoch marker is what makes
+// a later missing anchor detectable as a loss rather than a first run.
+func (r *RiskEngine) persistTruthAnchor(ctx context.Context, tipID int64, tipHash string) error {
+	raw, err := json.Marshal(truthAnchor{TipID: tipID, TipHash: tipHash})
+	if err != nil {
+		return err
+	}
+	if err := r.redis.Set(ctx, truthAnchorKey, string(raw), 0).Err(); err != nil {
+		return err
+	}
+	return r.redis.Set(ctx, truthAnchorEpochKey, "1", 0).Err()
+}
+
+// engageAnchorKill fails closed on anchor evidence: kill switch first,
+// one critical alert, never a silent adoption.
+func (r *RiskEngine) engageAnchorKill(detail string) {
+	log.Printf("truth-anchor: FAIL-CLOSED: %s", detail)
+	if _, err := r.activateKillSwitch("truthcore anchor check failed: " + detail); err != nil {
+		log.Printf("truth-anchor: kill switch engagement failed: %v", err)
+	}
+	r.truthMu.Lock()
+	first := !r.truthAnchorKillSent
+	r.truthAnchorKillSent = true
+	r.truthMu.Unlock()
+	if first {
+		r.publishAlert(context.Background(), "critical", map[string]interface{}{
+			"event":  "TRUTHCORE_ANCHOR_FAILED",
+			"detail": detail,
+		})
+	}
+}
+
+// checkTruthAnchor loads the persisted anchor and proves the live chain
+// still descends from it. It never adopts a head it cannot tie to the
+// anchor (or, on genuine first run, to a from-genesis verification the
+// caller is about to perform).
+func (r *RiskEngine) checkTruthAnchor(ctx context.Context) anchorCheckResult {
+	if r.truthClient == nil {
+		return anchorUnresolved
+	}
+	raw, err := r.redis.Get(ctx, truthAnchorKey).Result()
+	if err != nil && err != redis.Nil {
+		log.Printf("truth-anchor: cannot read persisted anchor (%v) — verification deferred (fail-closed)", err)
+		return anchorUnresolved
+	}
+
+	if err == redis.Nil {
+		// No anchor persisted. First run ever, or the anchor was lost.
+		_, eerr := r.redis.Get(ctx, truthAnchorEpochKey).Result()
+		if eerr != nil && eerr != redis.Nil {
+			log.Printf("truth-anchor: cannot read anchor epoch (%v) — verification deferred (fail-closed)", eerr)
+			return anchorUnresolved
+		}
+		if eerr == redis.Nil {
+			// Genuine first run: nothing anchored yet. The caller's
+			// first verification is always a full from-genesis pass;
+			// its tip becomes the anchor.
+			return anchorResolvedOK
+		}
+		// The anchor existed and is gone (Redis flush/failover, manual
+		// deletion). Adopting the current head now would anchor whatever
+		// chain an attacker left behind — fail closed instead.
+		if r.truthAcceptCurrentTip {
+			log.Printf("truth-anchor: WARNING: anchor missing after first run, but TRUTHCORE_ACCEPT_CURRENT_TIP=1 is armed — the anchor will be re-established only after a full independent verification")
+			return anchorDeferredReanchor
+		}
+		r.engageAnchorKill("verified anchor missing after first run (epoch marker present, anchor absent) — refusing to adopt the current chain head")
+		return anchorBlockedPoison
+	}
+
+	var anchor truthAnchor
+	if jerr := json.Unmarshal([]byte(raw), &anchor); jerr != nil || anchor.TipID <= 0 || anchor.TipHash == "" {
+		r.engageAnchorKill(fmt.Sprintf("persisted anchor is unparsable (%q) — refusing to trust the chain", raw))
+		return anchorBlockedPoison
+	}
+
+	head, herr := r.truthClient.Head(ctx)
+	if herr != nil {
+		// Distinguish "spine unreachable" from "chain is empty": an
+		// empty chain under a persisted anchor is total truncation.
+		if entries, eerr := r.truthClient.Entries(ctx, 0, 1); eerr == nil && len(entries) == 0 {
+			r.engageAnchorKill("chain is empty but a verified anchor exists (total truncation or database replacement)")
+			return anchorBlockedPoison
+		}
+		log.Printf("truth-anchor: chain head unavailable (%v) — continuity check deferred (fail-closed)", herr)
+		return anchorUnresolved
+	}
+
+	switch {
+	case head.ID < anchor.TipID:
+		r.engageAnchorKill(fmt.Sprintf("chain truncated: head id %d is below anchored tip %d", head.ID, anchor.TipID))
+		return anchorBlockedPoison
+	case head.ID == anchor.TipID && head.Hash != anchor.TipHash:
+		r.engageAnchorKill(fmt.Sprintf("chain tip rewritten at anchored height %d", anchor.TipID))
+		return anchorBlockedPoison
+	case head.ID > anchor.TipID:
+		// The chain grew since the anchor: the anchored entry itself
+		// must still be present, byte-identical, at its height.
+		entries, eerr := r.truthClient.Entries(ctx, anchor.TipID-1, 1)
+		if eerr != nil {
+			log.Printf("truth-anchor: cannot fetch anchored entry %d (%v) — continuity check deferred (fail-closed)", anchor.TipID, eerr)
+			return anchorUnresolved
+		}
+		if len(entries) != 1 || entries[0].ID != anchor.TipID || entries[0].Hash != anchor.TipHash {
+			r.engageAnchorKill(fmt.Sprintf("chain history rewritten at or below anchored tip %d", anchor.TipID))
+			return anchorBlockedPoison
+		}
+	}
+
+	// Continuity proven. Pin the in-process tip to the anchor (if this
+	// process has not verified anything yet) so incremental checks bind
+	// to it as well.
+	r.truthMu.Lock()
+	if r.truthTipID == 0 {
+		r.truthTipID, r.truthTipHash = anchor.TipID, anchor.TipHash
+	}
+	r.truthMu.Unlock()
+	log.Printf("truth-anchor: continuity confirmed against anchored tip %d", anchor.TipID)
+	return anchorResolvedOK
+}
+
+func (r *RiskEngine) truthAnchorResolved() bool {
+	r.truthMu.Lock()
+	defer r.truthMu.Unlock()
+	return r.truthAnchorOK
+}
+
+// restoreTruthAnchor runs the boot-time anchor continuity check before
+// the verify loop starts. Unresolved or poisoned outcomes are logged and
+// left to the loop, which re-checks every cycle and never updates the
+// trusted tip until the anchor resolves.
+func (r *RiskEngine) restoreTruthAnchor() {
+	if r.truthClient == nil {
+		return
+	}
+	if r.truthAcceptCurrentTip {
+		log.Printf("truth-anchor: TRUTHCORE_ACCEPT_CURRENT_TIP=1 armed — a MISSING anchor will be re-established only after a full independent verification; a proven mismatch still fails closed")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	switch r.checkTruthAnchor(ctx) {
+	case anchorResolvedOK:
+		r.truthMu.Lock()
+		r.truthAnchorOK = true
+		r.truthMu.Unlock()
+		log.Printf("truth-anchor: persisted anchor loaded; chain continuity confirmed at boot")
+	case anchorDeferredReanchor:
+		log.Printf("truth-anchor: anchor missing; operator re-anchor armed — the verify loop anchors after its first full pass")
+	default:
+		log.Printf("truth-anchor: anchor NOT resolved at boot — the verify loop keeps failing closed until it resolves")
+	}
+}
+
 // truthVerifyLoop independently re-verifies the TruthCore hash chain every
 // 60s — recomputing every link locally, trusting nothing but the raw entry
 // bytes. On any tamper evidence (broken link, rewritten hash, truncation,
@@ -536,6 +754,26 @@ func (r *RiskEngine) truthVerifyLoop() {
 func (r *RiskEngine) truthVerifyOnce() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+
+	// Durable-anchor gate: until the persisted verified tip has been
+	// loaded and the live chain proven to descend from it, no
+	// verification result is trusted — a restarted verifier must not
+	// adopt a chain rewritten while it was down. (In operator-armed
+	// re-anchor mode the successful full verification below is what
+	// re-establishes the anchor.)
+	if !r.truthAnchorResolved() {
+		switch r.checkTruthAnchor(ctx) {
+		case anchorResolvedOK:
+			r.truthMu.Lock()
+			r.truthAnchorOK = true
+			r.truthMu.Unlock()
+		case anchorDeferredReanchor:
+			// Proceed: persistTruthAnchor below re-anchors after a
+			// successful (always full, at tip 0) verification.
+		default:
+			return
+		}
+	}
 
 	r.truthMu.Lock()
 	tipID, tipHash := r.truthTipID, r.truthTipHash
@@ -607,6 +845,26 @@ func (r *RiskEngine) truthVerifyOnce() {
 		r.truthLastFull = time.Now()
 	}
 	r.truthMu.Unlock()
+
+	// Persist the freshly verified tip as the external anchor, so the
+	// next boot can prove continuity instead of trusting whatever head
+	// it finds. A persist failure only alerts: the in-process pinned tip
+	// still protects this run, and any staleness is caught by the boot
+	// continuity check (an older anchor is still a valid ancestor).
+	if newID <= 0 || newHash == "" {
+		return // nothing verifiable to anchor (empty chain never reaches here)
+	}
+	if perr := r.persistTruthAnchor(ctx, newID, newHash); perr != nil {
+		log.Printf("truth-anchor: failed to persist verified tip %d: %v", newID, perr)
+		r.publishAlert(context.Background(), "warning", map[string]interface{}{
+			"event":  "TRUTHCORE_ANCHOR_PERSIST_FAILED",
+			"detail": perr.Error(),
+		})
+	} else {
+		r.truthMu.Lock()
+		r.truthAnchorOK = true
+		r.truthMu.Unlock()
+	}
 }
 
 func (r *RiskEngine) run() {

@@ -37,6 +37,19 @@ const (
 	EventOrderSubmitted = "vulture.order_submitted"
 	EventFill           = "vulture.fill"
 	EventOrderRefused   = "vulture.order_refused"
+
+	// EventFillAuditGap is the explicit, operator-acknowledged record that
+	// a fill happened but its vulture.fill entry could not be appended and
+	// was never backfilled. It is appended by the execution-service
+	// audit-halt-clear operator command only; reconciliation treats it as
+	// the gap record that closes an order's audit trail honestly instead
+	// of a silent hole.
+	EventFillAuditGap = "vulture.fill_audit_gap"
+
+	// EventAuditHaltCleared records an operator clearing a durable audit
+	// halt (execution-service audit-halt-clear). It is appended BEFORE the
+	// durable halt state is cleared, so the clear itself is auditable.
+	EventAuditHaltCleared = "vulture.audit_halt_cleared"
 )
 
 // GenesisPrevHash is the prev_hash of the first entry in a chain.
