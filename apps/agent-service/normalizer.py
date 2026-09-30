@@ -1,12 +1,10 @@
 """Signal normalizer — converts raw agent output to canonical signal contract."""
 from __future__ import annotations
-import os
 import time
 import uuid
 from typing import Optional
 
-
-PAPER_MODE = os.getenv("PAPER_MODE", "true").lower() == "true"
+from modelock import current_mode
 
 
 def normalize_signal(
@@ -56,7 +54,7 @@ def normalize_signal(
         "target": float(strategy_output.get("target", price * 1.01)),
         "confidence": float(confidence),
         "timestamp": int(time.time() * 1000),
-        "mode": "paper" if PAPER_MODE else "live",
+        "mode": current_mode(),
         "reason": str(strategy_output.get("reason", f"{strategy_name}:{side}")),
         "meta": {
             k: v for k, v in strategy_output.items()
