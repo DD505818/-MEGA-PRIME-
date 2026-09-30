@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "omega-prime-validation-lab"
+version = "0.1.0"
+description = "Validation laboratory: the gauntlet every edge candidate must pass before PAPER"
+requires-python = ">=3.10"
+dependencies = ["numpy", "pandas", "scipy"]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
