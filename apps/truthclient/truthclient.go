@@ -144,6 +144,22 @@ func (c *Client) Append(ctx context.Context, eventType string, payload interface
 	return &e, nil
 }
 
+// Ready checks TruthCore's readiness endpoint. Trading services use this
+// from their own readiness probes so an audit-degraded pod is removed from
+// service before it can accept new work.
+func (c *Client) Ready(ctx context.Context) error {
+	resp, err := c.do(ctx, http.MethodGet, "/health/ready", nil, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("truthclient: readiness status %d: %s", resp.StatusCode, string(b))
+	}
+	return nil
+}
+
 // Head returns the chain tip.
 func (c *Client) Head(ctx context.Context) (*Head, error) {
 	resp, err := c.do(ctx, http.MethodGet, "/head", nil, nil)
