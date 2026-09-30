@@ -36,19 +36,29 @@ jobs:
           python3 - <<'EOF'
           import re, sys
           text = open('.github/workflows/publish-ghcr.yml').read()
-          # Only matrix definitions ("- {name: ..., context: ...}"), not the
-          # "context: ${{ matrix.context }}" usage line.
-          contexts = re.findall(r'-\s*\{[^}]*context:\s*([^\s}]+)', text)
-          bad = [c for c in contexts
-                 if 'omega-prime-delta' in c or 'omega-prime-hardened' in c or 'omega-prime-pro' in c]
-          if bad:
-              print(f"FAIL: publish contexts reference quarantined trees: {bad}")
+          # Matrix entries may use a service-local apps/* context, or the
+          # repository root when a Dockerfile needs shared canonical modules.
+          entries = re.findall(
+              r'-\s*\{[^}]*context:\s*([^,}\s]+)[^}]*dockerfile:\s*([^}\s]+)',
+              text,
+          )
+          if not entries:
+              print("FAIL: no publish matrix entries found")
               sys.exit(1)
-          non_apps = [c for c in contexts if not c.startswith('apps/')]
-          if non_apps:
-              print(f"FAIL: publish contexts outside canonical apps/: {non_apps}")
-              sys.exit(1)
-          print(f"publish contexts OK ({len(contexts)} services, all under apps/)")
+          for context, dockerfile in entries:
+              if any(q in context or q in dockerfile for q in (
+                  'omega-prime-delta', 'omega-prime-hardened', 'omega-prime-pro'
+              )):
+                  print(f"FAIL: quarantined tree in publish entry: {context} {dockerfile}")
+                  sys.exit(1)
+              if context == '.':
+                  if not dockerfile.startswith('apps/'):
+                      print(f"FAIL: root context must target canonical apps/: {dockerfile}")
+                      sys.exit(1)
+              elif not context.startswith('apps/'):
+                  print(f"FAIL: publish context outside canonical apps/: {context}")
+                  sys.exit(1)
+          print(f"publish contexts OK ({len(entries)} canonical services)")
           EOF
 
       - name: Quarantine markers must exist
