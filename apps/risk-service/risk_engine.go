@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -13,6 +14,8 @@ import (
 	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
+	"github.com/google/uuid"
+	"github.com/omega-prime-delta/approval"
 	"github.com/omega-prime-delta/modelock"
 )
 
@@ -23,6 +26,11 @@ type RiskEngine struct {
 	producer     *kafka.Producer
 	killSwitch   atomic.Bool
 	circuitBreak atomic.Bool
+
+	// approvalPriv signs every approved signal. It is the AEGIS side of the
+	// authority boundary: without it no approval can be issued, and the
+	// service refuses to start (see main). It is never logged or exported.
+	approvalPriv ed25519.PrivateKey
 
 	// controlMu serializes kill/reset state transitions so concurrent
 	// /kill and /reset calls cannot interleave: the in-memory flag and the
@@ -438,6 +446,29 @@ func (r *RiskEngine) publishAlert(ctx context.Context, level string, data map[st
 	}, nil)
 }
 
+// issueApproval builds and signs the single-use authority token for an
+// approved signal. It binds every execution-critical field; VULTURE
+// verifies the signature, the expiry, and the field binding before any
+// order state or routing. Quantity must already be the risk-adjusted value.
+func (r *RiskEngine) issueApproval(signal map[string]interface{}) *approval.Approval {
+	qty, _ := toFloat64(signal["quantity"])
+	limitPrice, _ := toFloat64(signal["limit_price"])
+	stopPrice, _ := toFloat64(signal["stop"])
+	a := &approval.Approval{
+		ApprovalID: uuid.NewString(),
+		SignalID:   strOf(signal["signal_id"]),
+		StrategyID: strOf(signal["strategy_id"]),
+		Symbol:     strOf(signal["symbol"]),
+		Side:       strOf(signal["side"]),
+		Quantity:   qty,
+		LimitPrice: limitPrice,
+		StopPrice:  stopPrice,
+		Mode:       strOf(signal["mode"]),
+	}
+	a.Sign(r.approvalPriv, time.Now())
+	return a
+}
+
 func (r *RiskEngine) run() {
 	log.Println("AEGIS Governor online — 14 gates active")
 	for {
@@ -455,7 +486,24 @@ func (r *RiskEngine) run() {
 			if approved {
 				signal["quantity"] = adjQty
 				signal["risk_approved"] = true
-				r.forward("signals.approved", signal)
+				// Authority boundary: the approval is the ONLY thing that
+				// authorizes execution. An approved-but-unsigned signal must
+				// never reach signals.approved — fail closed.
+				if r.approvalPriv == nil {
+					signal["reject_reason"] = "APPROVAL_SIGNING_UNAVAILABLE"
+					signal["risk_approved"] = false
+					r.forward("signals.rejected", signal)
+					r.publishAlert(context.Background(), "critical", map[string]interface{}{
+						"event":     "APPROVAL_SIGNING_UNAVAILABLE",
+						"signal_id": strOf(signal["signal_id"]),
+					})
+					log.Printf("REJECT [%s] %s → APPROVAL_SIGNING_UNAVAILABLE", signal["strategy_id"], signal["signal_id"])
+				} else {
+					appr := r.issueApproval(signal)
+					signal["aegis_approval"] = appr.ToMap()
+					r.forward("signals.approved", signal)
+					log.Printf("APPROVED [%s] %s approval=%s", signal["strategy_id"], signal["signal_id"], appr.ApprovalID[:8])
+				}
 			} else {
 				signal["reject_reason"] = reason
 				signal["risk_approved"] = false
@@ -492,6 +540,11 @@ func (r *RiskEngine) redisString(ctx context.Context, key string) string {
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
+
+func strOf(v interface{}) string {
+	s, _ := v.(string)
+	return s
+}
 
 func toFloat64(v interface{}) (float64, bool) {
 	switch val := v.(type) {

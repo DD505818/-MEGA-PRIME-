@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
@@ -20,6 +21,7 @@ import (
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/go-redis/redis/v8"
 	"github.com/google/uuid"
+	"github.com/omega-prime-delta/approval"
 	"github.com/omega-prime-delta/modelock"
 )
 
@@ -87,6 +89,11 @@ type ExecutionEngine struct {
 	orders map[string]*Order
 
 	paperMode bool
+
+	// approvalPub is the AEGIS public key for the authority boundary.
+	// Every signal must carry a verifiable, single-use, unexpired approval
+	// signed by the matching private key, or the order is refused.
+	approvalPub ed25519.PublicKey
 }
 
 func NewExecutionEngine(redisAddr, brokers string) *ExecutionEngine {
@@ -94,6 +101,13 @@ func NewExecutionEngine(redisAddr, brokers string) *ExecutionEngine {
 	// proves paper mode. LIVE is locked — no configuration can enable it.
 	modelock.RequirePaper("execution-service")
 	paperMode := modelock.IsPaper() // always true here; kept for submit-path clarity
+
+	// Authority boundary: VULTURE cannot verify AEGIS approvals without the
+	// public key, so it must not start without one.
+	approvalPub, err := approval.ParsePublicKey(os.Getenv("AEGIS_APPROVAL_PUBKEY"))
+	if err != nil {
+		log.Fatalf("authority boundary: %v", err)
+	}
 
 	rdb := newRedisClient(redisAddr)
 
@@ -113,11 +127,12 @@ func NewExecutionEngine(redisAddr, brokers string) *ExecutionEngine {
 	}
 
 	return &ExecutionEngine{
-		redis:     rdb,
-		consumer:  c,
-		producer:  p,
-		orders:    make(map[string]*Order),
-		paperMode: paperMode,
+		redis:       rdb,
+		consumer:    c,
+		producer:    p,
+		orders:      make(map[string]*Order),
+		paperMode:   paperMode,
+		approvalPub: approvalPub,
 	}
 }
 
@@ -161,18 +176,99 @@ func (e *ExecutionEngine) handleHalt() {
 	log.Println("All orders cancelled — kill confirmed")
 }
 
+// verifyApproval enforces the AEGIS→VULTURE authority boundary on one
+// signal. It returns the verified approval, or a cancel reason. Checks, in
+// order: presence, signature, expiry, field binding against the signal, and
+// atomic single-use claim in Redis (the database boundary — single-use is
+// enforced by Redis atomicity, not by process memory).
+func (e *ExecutionEngine) verifyApproval(signal map[string]interface{}) (*approval.Approval, string) {
+	raw, ok := signal["aegis_approval"].(map[string]interface{})
+	if !ok {
+		return nil, "APPROVAL_MISSING"
+	}
+	appr, err := approval.FromMap(raw)
+	if err != nil {
+		return nil, "APPROVAL_MALFORMED"
+	}
+	if err := appr.Verify(e.approvalPub); err != nil {
+		return nil, "APPROVAL_BAD_SIGNATURE"
+	}
+	now := time.Now()
+	if appr.Expired(now) {
+		return nil, "APPROVAL_EXPIRED"
+	}
+	// Field binding: the signal's execution-critical fields must equal the
+	// approved values exactly. Any divergence means tampering or a stale
+	// mix-up — refuse.
+	qty, _ := toF64(signal["quantity"])
+	limitPrice, _ := toF64(signal["limit_price"])
+	stopPrice, _ := toF64(signal["stop"])
+	bound := appr.SignalID == strOf(signal["signal_id"]) &&
+		appr.StrategyID == strOf(signal["strategy_id"]) &&
+		appr.Symbol == strOf(signal["symbol"]) &&
+		appr.Side == strOf(signal["side"]) &&
+		appr.Quantity == qty &&
+		appr.LimitPrice == limitPrice &&
+		appr.StopPrice == stopPrice &&
+		appr.Mode == strOf(signal["mode"])
+	if !bound {
+		return nil, "APPROVAL_FIELD_MISMATCH"
+	}
+	// Single-use claim: atomic SET NX. If the key already exists the
+	// approval was consumed — a replay.
+	claimed, err := e.redis.SetNX(context.Background(), appr.ClaimKey(), "claimed", approval.ClaimKeyTTL).Result()
+	if err != nil {
+		return nil, "APPROVAL_CLAIM_STORE_UNAVAILABLE"
+	}
+	if !claimed {
+		return nil, "APPROVAL_REPLAY"
+	}
+	return appr, ""
+}
+
+// killActiveAtSubmit reads the durable kill flag owned by risk-service.
+// Fail closed: a Redis error means the kill state is UNKNOWN, which must
+// block submission, not permit it (the old .Val() call failed open).
+func (e *ExecutionEngine) killActiveAtSubmit() (active, unknown bool) {
+	killVal, err := e.redis.Get(context.Background(), "kill_switch").Result()
+	if err != nil && err != redis.Nil {
+		return false, true
+	}
+	return killVal == "1", false
+}
+
+// refuse cancels an order before submission with an audited reason.
+func (e *ExecutionEngine) refuse(signal map[string]interface{}, reason string) {
+	order := e.signalToOrder(signal)
+	e.mu.Lock()
+	e.orders[order.ID] = order
+	e.mu.Unlock()
+	e.transition(order, StateCancelled)
+	order.Meta["cancel_reason"] = reason
+	if appr, ok := signal["aegis_approval"].(map[string]interface{}); ok {
+		if id, ok := appr["approval_id"].(string); ok {
+			order.Meta["approval_id"] = id
+		}
+	}
+	log.Printf("ORDER %s: submission refused — %s", order.ID[:8], reason)
+}
+
 func (e *ExecutionEngine) processSignal(signal map[string]interface{}) {
 	order := e.signalToOrder(signal)
 
 	// PAPER/LIVE lock: re-assert paper mode on every worker message, so a
 	// mode change after startup can never leak an order toward a live venue.
 	if err := modelock.AssertPaper(); err != nil {
-		e.mu.Lock()
-		e.orders[order.ID] = order
-		e.mu.Unlock()
-		e.transition(order, StateCancelled)
-		order.Meta["cancel_reason"] = "MODELOCK_REFUSAL"
-		log.Printf("ORDER %s: submission refused — %v", order.ID[:8], err)
+		e.refuse(signal, "MODELOCK_REFUSAL")
+		return
+	}
+
+	// Authority boundary: only a signed, unexpired, single-use AEGIS
+	// approval authorizes submission. This is checked independently at
+	// VULTURE — trust in the topic is not enough.
+	appr, reason := e.verifyApproval(signal)
+	if reason != "" {
+		e.refuse(signal, reason)
 		return
 	}
 
@@ -181,13 +277,15 @@ func (e *ExecutionEngine) processSignal(signal map[string]interface{}) {
 	// after it — this closes the approve→submit race window. Reactive
 	// cancellation of already-tracked orders still flows through
 	// emergency.halt → handleHalt.
-	if e.redis.Get(context.Background(), "kill_switch").Val() == "1" {
-		e.mu.Lock()
-		e.orders[order.ID] = order
-		e.mu.Unlock()
-		e.transition(order, StateCancelled)
-		order.Meta["cancel_reason"] = "KILL_SWITCH_ACTIVE_AT_SUBMIT"
-		log.Printf("ORDER %s: submission blocked — kill switch active at submit", order.ID[:8])
+	// Fail closed: a Redis error means the kill state is UNKNOWN, which
+	// must block submission, not permit it.
+	killActive, killUnknown := e.killActiveAtSubmit()
+	if killUnknown {
+		e.refuse(signal, "KILL_SWITCH_STATE_UNKNOWN")
+		return
+	}
+	if killActive {
+		e.refuse(signal, "KILL_SWITCH_ACTIVE_AT_SUBMIT")
 		return
 	}
 
@@ -195,9 +293,13 @@ func (e *ExecutionEngine) processSignal(signal map[string]interface{}) {
 	e.orders[order.ID] = order
 	e.mu.Unlock()
 
+	// Authority verified: record the approval lineage on the order.
+	order.Meta["approval_id"] = appr.ApprovalID
+	order.Meta["aegis_gates_version"] = appr.GatesVersion
+
 	e.transition(order, StateRiskPending)
 
-	// Risk approval already happened (signal came from signals.approved)
+	// AEGIS approval verified above (signature, expiry, binding, single-use).
 	e.transition(order, StateApproved)
 
 	// Select algorithm and venue
