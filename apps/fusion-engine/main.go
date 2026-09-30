@@ -346,9 +346,9 @@ func (fe *FusionEngine) statsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	// PAPER/LIVE lock: fail closed unless explicitly in paper mode.
-	// LIVE is locked — no configuration can enable it.
-	modelock.RequirePaper("fusion-engine")
+	// PAPER/LIVE contract: startup succeeds only for one unambiguous,
+	// fully gated runtime mode. Invalid combinations fail closed.
+	modelock.RequireMode("fusion-engine")
 
 	fe := NewFusionEngine(os.Getenv("REDIS_URL"), os.Getenv("KAFKA_BROKERS"))
 	go fe.run()
