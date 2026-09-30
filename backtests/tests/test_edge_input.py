@@ -4,7 +4,7 @@ from pathlib import Path
 import pandas as pd
 
 from backtests.lab.dataset import seal_snapshot
-from backtests.lab.edge_input import load_edge_search_bars
+from backtests.lab.edge_input import load_edge_search_data
 
 
 def test_edge_loader_requires_verified_snapshot(tmp_path: Path):
@@ -24,6 +24,6 @@ def test_edge_loader_requires_verified_snapshot(tmp_path: Path):
     ).to_csv(raw, index=False)
     snap = tmp_path / "snap"
     seal_snapshot(raw, snap, source_name="fixture", min_rows=100)
-    bars, manifest = load_edge_search_bars(snap)
+    bars, manifest = load_edge_search_data(snap)
     assert len(bars) == 100
     assert manifest["edge_search_ready"] is True
