@@ -236,9 +236,9 @@ func jsonFloat(v interface{}) (float64, bool) {
 }
 
 func main() {
-	// PAPER/LIVE lock: fail closed unless explicitly in paper mode.
-	// LIVE is locked — no configuration can enable it.
-	modelock.RequirePaper("capital-allocator")
+	// PAPER/LIVE contract: startup succeeds only for one unambiguous,
+	// fully gated runtime mode. Invalid combinations fail closed.
+	modelock.RequireMode("capital-allocator")
 
 	alloc := NewAllocator(os.Getenv("REDIS_URL"), os.Getenv("KAFKA_BROKERS"))
 	go alloc.run()
