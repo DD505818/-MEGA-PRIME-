@@ -42,7 +42,7 @@ jobs:
       - name: Create PAPER lifecycle topics
         run: |
           for topic in \
-            signals.raw signals.approved signals.rejected emergency.halt \
+            signals.raw signals.sized signals.approved signals.rejected emergency.halt \
             orders.routed orders.fills market.prices; do
             docker compose exec -T kafka kafka-topics \
               --bootstrap-server kafka:9092 \
