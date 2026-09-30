@@ -1,13 +1,13 @@
 import asyncio
 
 from health import HealthState, start_health_server
-from modelock import require_paper
+from modelock import require_mode
 from orchestrator import Orchestrator
 from strategies.box_theory import BoxTheory
 from strategies.surge import Surge
 
-# PAPER/LIVE lock: fail closed unless explicitly in paper mode.
-require_paper("agent-service")
+# PAPER/LIVE contract: ambiguous or uncertified modes fail closed.
+require_mode("agent-service")
 
 health = HealthState()
 start_health_server(health)
