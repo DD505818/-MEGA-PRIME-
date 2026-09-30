@@ -14,9 +14,38 @@ from signal_validator import validate
 from health import HealthState
 from transport import kafka_client_kwargs
 
+try:
+    from midas import is_promoted as _midas_is_promoted
+except Exception:  # pragma: no cover - import guard
+    _midas_is_promoted = None
+
 log = logging.getLogger("orchestrator")
 KAFKA = os.getenv("KAFKA_BROKERS", "kafka:9092")
 EQUITY = float(os.getenv("PORTFOLIO_EQUITY", "100000"))
+
+# MIDAS gate: warn once per unpromoted strategy per process (avoid log spam).
+_midas_warned: set[str] = set()
+
+
+def _midas_gate(name: str) -> bool:
+    """AGENTS -> MIDAS enforcement: only PROMOTED strategies may emit.
+
+    Fail closed: import failure, registry error, or unknown strategy all
+    block emission.
+    """
+    try:
+        ok = bool(_midas_is_promoted) and _midas_is_promoted(name)
+    except Exception as exc:
+        log.error("MIDAS gate error for %s: %s", name, exc)
+        return False
+    if not ok and name not in _midas_warned:
+        _midas_warned.add(name)
+        log.warning(
+            "MIDAS: strategy %s is not PROMOTED; signals blocked "
+            "(AGENTS -> MIDAS gate). Promote via a validation-lab PASS report.",
+            name,
+        )
+    return ok
 
 
 def _build_df(records: list[dict]) -> pd.DataFrame:
@@ -121,9 +150,11 @@ class Orchestrator:
                 log.warning("NEXUS raised: %s", exc)
                 raw_signals["NEXUS"] = None
 
-        # Normalize, validate, and publish
+        # Normalize, validate, and publish -- MIDAS gate first
         emitted = 0
         for name, raw in raw_signals.items():
+            if not _midas_gate(name):
+                continue
             signal = normalize_signal(raw, name, equity=EQUITY)
             if signal is None:
                 continue
