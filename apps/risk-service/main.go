@@ -36,6 +36,10 @@ func readyHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"status":"not_ready","dependency":"kafka"}`, http.StatusServiceUnavailable)
 		return
 	}
+	if engine.truthClient == nil || engine.truthClient.Ready(ctx) != nil {
+		http.Error(w, `{"status":"not_ready","dependency":"truth_core"}`, http.StatusServiceUnavailable)
+		return
+	}
 	assignment, err := engine.consumer.Assignment()
 	if err != nil || len(assignment) == 0 {
 		http.Error(w, `{"status":"not_ready","dependency":"kafka_consumer"}`, http.StatusServiceUnavailable)
