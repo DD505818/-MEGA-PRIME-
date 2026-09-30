@@ -699,6 +699,10 @@ func main() {
 			http.Error(w, `{"status":"not_ready","dependency":"kafka"}`, http.StatusServiceUnavailable)
 			return
 		}
+		if eng.truthClient == nil || eng.truthClient.Ready(ctx) != nil {
+			http.Error(w, `{"status":"not_ready","dependency":"truth_core"}`, http.StatusServiceUnavailable)
+			return
+		}
 		assignment, err := eng.consumer.Assignment()
 		if err != nil || len(assignment) == 0 {
 			http.Error(w, `{"status":"not_ready","dependency":"kafka_consumer"}`, http.StatusServiceUnavailable)
