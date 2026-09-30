@@ -27,6 +27,7 @@ def cmd_prepare(args) -> None:
         args.input,
         args.output,
         source_name=args.source,
+        schema_version=None if args.schema == "auto" else args.schema,
         min_rows=args.min_rows,
         allow_reorder=args.allow_reorder,
     )
@@ -38,8 +39,8 @@ def cmd_verify(args) -> None:
 
 
 def cmd_folds(args) -> None:
-    verify_snapshot(args.snapshot, min_rows=args.min_rows)
-    bars = pd.read_csv(Path(args.snapshot) / "bars.csv")
+    manifest = verify_snapshot(args.snapshot, min_rows=args.min_rows)
+    bars = pd.read_csv(Path(args.snapshot) / manifest["canonical_file"])
     folds = purged_walk_forward(
         bars["timestamp"],
         train_bars=args.train_bars,
@@ -107,6 +108,7 @@ def build_parser() -> argparse.ArgumentParser:
     prepare.add_argument("--input", required=True)
     prepare.add_argument("--output", required=True)
     prepare.add_argument("--source", required=True)
+    prepare.add_argument("--schema", choices=["auto", "omega-bars-v1", "omega-ticks-v1"], default="auto")
     prepare.add_argument("--min-rows", type=int, default=100)
     prepare.add_argument("--allow-reorder", action="store_true")
     prepare.set_defaults(func=cmd_prepare)
