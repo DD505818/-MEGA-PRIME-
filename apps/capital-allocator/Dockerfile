@@ -8,7 +8,7 @@ RUN go mod download && go mod verify
 RUN CGO_ENABLED=1 go build -tags musl -trimpath -o capital-allocator .
 
 FROM alpine:3.24
-RUN apk add --no-cache librdkafka ca-certificates
+RUN apk upgrade --no-cache && apk add --no-cache librdkafka ca-certificates
 WORKDIR /app
 COPY --from=builder /src/apps/capital-allocator/capital-allocator .
 USER 65532:65532
