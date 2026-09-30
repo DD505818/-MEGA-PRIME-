@@ -30,22 +30,51 @@ const KRAKEN_PAIR_KEY: &str = "XXBTZUSD";
 const SYMBOL: &str = "BTC/USD";
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
 
-/// PAPER/LIVE lock: terminate unless PAPER_MODE=true and
-/// LIVE_TRADING_ENABLED is not "true". Mirrors apps/modelock (Go).
-fn require_paper() {
+/// Canonical PAPER/LIVE mode contract. Mirrors apps/modelock (Go).
+fn current_mode() -> Result<&'static str, String> {
     let is_true = |v: &str| v.trim().eq_ignore_ascii_case("true");
     let paper = env::var("PAPER_MODE").map(|v| is_true(&v)).unwrap_or(false);
-    let live_flag = env::var("LIVE_TRADING_ENABLED")
+    let live = env::var("LIVE_TRADING_ENABLED")
         .map(|v| is_true(&v))
         .unwrap_or(false);
-    if live_flag || !paper {
-        eprintln!(
-            "modelock: market-data-service refusing to start: PAPER_MODE must be \"true\" \
-             and LIVE_TRADING_ENABLED must not be \"true\" (LIVE is locked)"
-        );
-        std::process::exit(1);
+    let trading = env::var("TRADING_MODE")
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_uppercase();
+    let broker_certified = env::var("BROKER_CERTIFIED")
+        .map(|v| is_true(&v))
+        .unwrap_or(false);
+    let failure_tests = env::var("FAILURE_TESTS_PASSED")
+        .map(|v| is_true(&v))
+        .unwrap_or(false);
+
+    if paper && !live && (trading.is_empty() || trading == "PAPER") {
+        return Ok("paper");
     }
-    println!("modelock: market-data-service started in PAPER mode (LIVE locked)");
+    if !paper && live && trading == "LIVE" && broker_certified && failure_tests {
+        return Ok("live");
+    }
+    Err(format!(
+        "invalid mode contract (PAPER_MODE={:?} LIVE_TRADING_ENABLED={:?} TRADING_MODE={:?} BROKER_CERTIFIED={:?} FAILURE_TESTS_PASSED={:?})",
+        env::var("PAPER_MODE").ok(),
+        env::var("LIVE_TRADING_ENABLED").ok(),
+        env::var("TRADING_MODE").ok(),
+        env::var("BROKER_CERTIFIED").ok(),
+        env::var("FAILURE_TESTS_PASSED").ok(),
+    ))
+}
+
+fn require_mode() -> &'static str {
+    match current_mode() {
+        Ok(mode) => {
+            println!("modelock: market-data-service started in {} mode", mode.to_ascii_uppercase());
+            mode
+        }
+        Err(error) => {
+            eprintln!("modelock: market-data-service refusing to start: {error}");
+            std::process::exit(1);
+        }
+    }
 }
 
 async fn serve_health(ready: Arc<AtomicBool>) -> std::io::Result<()> {
@@ -143,9 +172,8 @@ mod tests {
 
 #[tokio::main]
 async fn main() {
-    // PAPER/LIVE lock: fail closed unless explicitly in paper mode.
-    // LIVE is locked — no configuration can enable it.
-    require_paper();
+    // PAPER/LIVE contract: ambiguous or uncertified modes fail closed.
+    require_mode();
 
     let ready = Arc::new(AtomicBool::new(false));
     let health_ready = Arc::clone(&ready);
