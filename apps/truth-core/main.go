@@ -7,8 +7,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -22,6 +20,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/omega-prime-delta/modelock"
+	"github.com/omega-prime-delta/truthclient"
 )
 
 const initSQL = `
@@ -65,14 +64,12 @@ type TruthCore struct {
 	db *pgxpool.Pool
 }
 
+// computeHash hashes one entry. It delegates to truthclient.ComputeHash,
+// which reduces the payload to its transport-stable canonical bytes (see
+// truthclient.CanonicalPayload) before hashing, so the server, VerifyChain,
+// and independent clients all commit to the same byte string.
 func computeHash(prevHash, eventType string, payload []byte) string {
-	h := sha256.New()
-	h.Write([]byte(prevHash))
-	h.Write([]byte{0})
-	h.Write([]byte(eventType))
-	h.Write([]byte{0})
-	h.Write(payload)
-	return hex.EncodeToString(h.Sum(nil))
+	return truthclient.ComputeHash(prevHash, eventType, payload)
 }
 
 func NewTruthCore(dsn string) *TruthCore {
@@ -116,7 +113,11 @@ func (tc *TruthCore) Append(ctx context.Context, eventType string, payload inter
 	}
 	defer tx.Rollback(ctx)
 
-	// Hash the exact canonical representation PostgreSQL stores and later returns.
+	// Fetch the exact canonical representation PostgreSQL stores and later
+	// returns, so the hash is computed over PostgreSQL-normalized bytes
+	// (sorted keys, normalized numbers) rather than the submitted literal.
+	// computeHash further reduces them to the transport-stable form the
+	// HTTP API serves (see truthclient.CanonicalPayload).
 	var canonicalPayload []byte
 	if err := tx.QueryRow(ctx, `SELECT $1::jsonb`, string(payloadBytes)).Scan(&canonicalPayload); err != nil {
 		return nil, fmt.Errorf("canonicalize payload: %w", err)
