@@ -141,15 +141,20 @@ func (r *RiskEngine) validate(signal map[string]interface{}) (bool, string, floa
 	}
 
 	// ── Gate 3: Paper/Live Mode Mismatch ────────────────────────────────────
-	// Canonical mode comes from modelock: the process is locked to paper at
-	// startup (RequirePaper in main). This gate additionally rejects any
-	// signal declaring a non-paper mode, and refuses validation entirely if
-	// the process is somehow not in paper mode. Ambiguous mode → reject.
+	// Re-resolve the canonical runtime mode on every validation. A runtime
+	// configuration mutation or ambiguous mode fails closed. LIVE signals
+	// must declare "live" explicitly; legacy empty mode is tolerated only
+	// in PAPER.
 	signalMode, _ := signal["mode"].(string)
-	if !modelock.IsPaper() {
-		return false, "GATE3_NOT_IN_PAPER_MODE", 0
+	runtimeMode, modeErr := modelock.ResolveMode()
+	if modeErr != nil {
+		return false, "GATE3_RUNTIME_MODE_INVALID", 0
 	}
-	if signalMode != "" && !strings.EqualFold(strings.TrimSpace(signalMode), "paper") {
+	normalizedSignalMode := strings.ToLower(strings.TrimSpace(signalMode))
+	if normalizedSignalMode == "" && runtimeMode == modelock.ModePaper {
+		normalizedSignalMode = string(modelock.ModePaper)
+	}
+	if normalizedSignalMode != string(runtimeMode) {
 		return false, "GATE3_SIGNAL_MODE_MISMATCH", 0
 	}
 
@@ -482,7 +487,7 @@ func (r *RiskEngine) issueApproval(signal map[string]interface{}) *approval.Appr
 		Quantity:   qty,
 		LimitPrice: limitPrice,
 		StopPrice:  stopPrice,
-		Mode:       strOf(signal["mode"]),
+		Mode:       strings.ToLower(strings.TrimSpace(strOf(signal["mode"]))),
 	}
 	a.Sign(r.approvalPriv, time.Now())
 	return a
