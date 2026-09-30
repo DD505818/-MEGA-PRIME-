@@ -4,6 +4,9 @@ on:
   pull_request:
     paths:
       - "apps/risk-service/**"
+      - "apps/approval/**"
+      - "apps/modelock/**"
+      - "apps/truthclient/**"
       - "apps/execution-service/**"
       - "apps/portfolio-service/**"
       - "apps/truth-core/**"
@@ -27,6 +30,13 @@ jobs:
       PAPER_DETERMINISTIC: "true"
     steps:
       - uses: actions/checkout@v4
+      - name: Generate ephemeral CI credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd apps/approval && go run ./cmd/keygen) >> "$GITHUB_ENV"
+          echo "JWT_SECRET=ci-$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+          echo "TRUTHCORE_WRITE_SECRET=ci-$(openssl rand -hex 32)" >> "$GITHUB_ENV"
       - name: Start deterministic infrastructure
         run: docker compose up -d zookeeper kafka redis postgres
       - name: Create PAPER lifecycle topics
