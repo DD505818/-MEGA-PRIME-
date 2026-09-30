@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from backtests.lab.dataset import seal_snapshot
-from backtests.lab.edge_input import load_edge_search_data
+from validation_lab.dataset import seal_snapshot
+from validation_lab.edge_input import load_edge_search_data
 
 
 def test_edge_loader_requires_verified_snapshot(tmp_path: Path):

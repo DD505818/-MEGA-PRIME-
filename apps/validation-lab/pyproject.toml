@@ -12,5 +12,8 @@ dependencies = ["numpy", "pandas", "scipy"]
 [project.optional-dependencies]
 test = ["pytest"]
 
+[project.scripts]
+omega-validation-lab = "validation_lab.cli:main"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

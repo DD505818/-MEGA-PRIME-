@@ -4,12 +4,14 @@ on:
   pull_request:
     paths:
       - "backtests/**"
+      - "apps/validation-lab/**"
       - "docs/validation-lab.md"
       - ".github/workflows/validation-lab.yml"
   push:
     branches: [main]
     paths:
       - "backtests/**"
+      - "apps/validation-lab/**"
       - "docs/validation-lab.md"
       - ".github/workflows/validation-lab.yml"
   workflow_dispatch:
@@ -28,13 +30,19 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: backtests/requirements.txt
+          cache-dependency-path: apps/validation-lab/pyproject.toml
 
       - name: Install validation dependencies
-        run: python -m pip install -r backtests/requirements.txt
+        run: python -m pip install -e "apps/validation-lab[test]"
 
       - name: Syntax check
-        run: python -m compileall backtests -q
+        run: python -m compileall backtests apps/validation-lab -q
 
       - name: Run validation invariants
-        run: python -m pytest -q backtests/tests
+        run: python -m pytest -q apps/validation-lab/tests
+
+      - name: backtests.lab compatibility shims still import
+        run: >-
+          python -c "import backtests.lab.cli, backtests.lab.dataset,
+          backtests.lab.edge_input, backtests.lab.monte_carlo,
+          backtests.lab.splits, backtests.lab.statistics"

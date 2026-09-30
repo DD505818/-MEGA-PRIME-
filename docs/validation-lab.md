@@ -1,5 +1,11 @@
 # Validation Lab — Edge Search Data Contract
 
+> Canonical implementation: the `validation_lab` package in
+> `apps/validation-lab/validation_lab/` (dataset sealing, splits, statistics,
+> CSCV/PBO, bootstraps, Monte Carlo, gauntlet). `backtests/lab/` is a
+> compatibility shim only since the lab reconciliation
+> (`phase/7-lab-reconciliation`).
+
 ## Purpose
 
 Edge search must optimize against a stable historical artifact, not an
