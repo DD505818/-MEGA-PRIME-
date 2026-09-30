@@ -194,10 +194,18 @@ jobs:
 
       - name: Build ${{ matrix.service.name }}
         run: |
-          docker build \
-            -t omega-prime/${{ matrix.service.name }}:${{ github.sha }} \
-            -t omega-prime/${{ matrix.service.name }}:latest \
-            ./${{ matrix.service.path }}
+          if [[ "${{ matrix.service.name }}" == "risk-engine" ]]; then
+            docker build \
+              -f apps/risk-service/Dockerfile \
+              -t omega-prime/${{ matrix.service.name }}:${{ github.sha }} \
+              -t omega-prime/${{ matrix.service.name }}:latest \
+              .
+          else
+            docker build \
+              -t omega-prime/${{ matrix.service.name }}:${{ github.sha }} \
+              -t omega-prime/${{ matrix.service.name }}:latest \
+              ./${{ matrix.service.path }}
+          fi
           echo "Built omega-prime/${{ matrix.service.name }}"
 
   # ── Stage 5: Trivy Image Scan ─────────────────────────────────────
@@ -210,7 +218,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build risk-engine for scan
-        run: docker build -t omega-prime/risk-engine:scan ./apps/risk-service
+        run: docker build -f apps/risk-service/Dockerfile -t omega-prime/risk-engine:scan .
 
       - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
