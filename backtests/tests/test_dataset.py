@@ -31,7 +31,7 @@ def test_seal_and_verify_detects_tamper(tmp_path: Path):
     assert manifest["edge_search_ready"] is True
     assert verify_snapshot(out)["manifest_id"] == manifest["manifest_id"]
 
-    with (out / "bars.csv").open("a", encoding="utf-8") as f:
+    with (out / "market-data.csv").open("a", encoding="utf-8") as f:
         f.write("\n")
     with pytest.raises(DataQualityError, match="hash"):
         verify_snapshot(out)
@@ -61,4 +61,39 @@ def test_reorder_is_fail_closed_by_default(tmp_path: Path):
     source = tmp_path / "raw.csv"
     df.to_csv(source, index=False)
     with pytest.raises(DataQualityError, match="ordered"):
+        seal_snapshot(source, tmp_path / "out", source_name="fixture")
+
+
+def ticks(n=120):
+    ts = pd.date_range("2026-01-01", periods=n, freq="s", tz="UTC")
+    base = pd.Series(range(n), dtype=float) * 0.01 + 100.0
+    return pd.DataFrame(
+        {
+            "timestamp": ts,
+            "exchange": ["kraken"] * n,
+            "symbol": ["BTC/USD"] * n,
+            "price": base + 0.01,
+            "bid": base,
+            "ask": base + 0.02,
+            "volume": 1.0,
+        }
+    )
+
+
+def test_tick_schema_matches_canonical_market_feed(tmp_path: Path):
+    source = tmp_path / "ticks.csv"
+    ticks().to_csv(source, index=False)
+    out = tmp_path / "ticks-snapshot"
+    manifest = seal_snapshot(source, out, source_name="kraken-market-raw")
+    assert manifest["schema_version"] == "omega-ticks-v1"
+    assert manifest["quality"]["exchanges"] == ["kraken"]
+    assert verify_snapshot(out)["edge_search_ready"] is True
+
+
+def test_crossed_tick_rejected(tmp_path: Path):
+    df = ticks()
+    df.loc[5, "ask"] = df.loc[5, "bid"] - 0.01
+    source = tmp_path / "ticks.csv"
+    df.to_csv(source, index=False)
+    with pytest.raises(DataQualityError, match="ask < bid"):
         seal_snapshot(source, tmp_path / "out", source_name="fixture")
