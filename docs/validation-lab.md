@@ -14,9 +14,11 @@ bootstrap → versioned research evidence.
 ## Clean-data gate
 
 A snapshot is marked `edge_search_ready=true` only after all hard checks pass.
-The gate rejects invalid timestamps, NaN/Inf values, non-positive prices,
-negative volume, OHLC envelope violations, duplicate keys, and unexpected
-source ordering. Canonical bytes are SHA-256 sealed.
+The gate accepts either OHLCV bars or the canonical `market.raw` tick shape
+(`exchange,symbol,price,bid,ask,volume,timestamp`). It rejects invalid
+timestamps, NaN/Inf values, non-positive prices, negative volume, OHLC
+envelope violations, crossed spreads, duplicate keys, and unexpected source
+ordering. Canonical bytes are SHA-256 sealed.
 
 Gap counts are reported, not silently repaired. Market closures and venue
 outages need domain review; the lab does not invent bars.
