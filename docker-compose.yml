@@ -139,6 +139,10 @@ services:
       AEGIS_APPROVAL_PRIVKEY: ${AEGIS_APPROVAL_PRIVKEY:?missing - run keygen and export AEGIS_APPROVAL_PRIVKEY}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set - copy .env.example to .env and generate a secret}
       TRUTHCORE_URL: http://truth-core:8084
+      # Phase 4: TruthCore write authentication. Must match truth-core's
+      # TRUTHCORE_WRITE_SECRET. Compose fails fast if unset: unauthenticated
+      # audit writes are not acceptable in deployment.
+      TRUTHCORE_WRITE_SECRET: ${TRUTHCORE_WRITE_SECRET:?missing - generate a random secret and export TRUTHCORE_WRITE_SECRET}
     ports:
       - "8080:8080"
     restart: unless-stopped
@@ -162,6 +166,9 @@ services:
       # public key matching the risk-engine AEGIS_APPROVAL_PRIVKEY.
       AEGIS_APPROVAL_PUBKEY: ${AEGIS_APPROVAL_PUBKEY:?missing - export AEGIS_APPROVAL_PUBKEY from keygen}
       LIVE_TRADING_ENABLED: ${LIVE_TRADING_ENABLED:-false}
+      # Phase 4: audit-or-no-trade. Must match truth-core's secret.
+      TRUTHCORE_URL: http://truth-core:8084
+      TRUTHCORE_WRITE_SECRET: ${TRUTHCORE_WRITE_SECRET:?missing - export TRUTHCORE_WRITE_SECRET}
     ports:
       - "8081:8081"
     restart: unless-stopped
@@ -214,6 +221,10 @@ services:
       POSTGRES_DSN: ${POSTGRES_DSN:-postgresql://postgres:omega@postgres:5432/omega}
       PAPER_MODE: ${PAPER_MODE:-true}
       LIVE_TRADING_ENABLED: ${LIVE_TRADING_ENABLED:-false}
+      # Phase 4: authenticates /append writes from risk-engine and
+      # execution-engine. Without it the endpoint warns and accepts
+      # unauthenticated writes (dev only).
+      TRUTHCORE_WRITE_SECRET: ${TRUTHCORE_WRITE_SECRET:?missing - generate a random secret and export TRUTHCORE_WRITE_SECRET}
     ports:
       - "8084:8084"
     restart: unless-stopped

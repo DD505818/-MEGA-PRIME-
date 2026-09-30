@@ -20,9 +20,11 @@ require (
 	github.com/alicebob/miniredis/v2 v2.39.0
 	github.com/omega-prime-delta/approval v0.0.0
 	github.com/omega-prime-delta/modelock v0.0.0
+	github.com/omega-prime-delta/truthclient v0.0.0
 )
 
 replace (
 	github.com/omega-prime-delta/approval => ../approval
 	github.com/omega-prime-delta/modelock => ../modelock
+	github.com/omega-prime-delta/truthclient => ../truthclient
 )
