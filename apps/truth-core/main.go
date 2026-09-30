@@ -20,6 +20,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/omega-prime-delta/modelock"
 )
 
 const initSQL = `
@@ -245,6 +246,10 @@ func (tc *TruthCore) recentHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	// PAPER/LIVE lock: fail closed unless explicitly in paper mode.
+	// LIVE is locked — no configuration can enable it.
+	modelock.RequirePaper("truth-core")
+
 	dsn := os.Getenv("POSTGRES_DSN")
 	if dsn == "" {
 		dsn = "postgresql://postgres:omega@postgres:5432/omega"

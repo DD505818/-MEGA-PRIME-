@@ -20,6 +20,7 @@ import (
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/go-redis/redis/v8"
+	"github.com/omega-prime-delta/modelock"
 )
 
 // KellyConfig mirrors the strategy-config.yaml kelly section.
@@ -235,6 +236,10 @@ func jsonFloat(v interface{}) (float64, bool) {
 }
 
 func main() {
+	// PAPER/LIVE lock: fail closed unless explicitly in paper mode.
+	// LIVE is locked — no configuration can enable it.
+	modelock.RequirePaper("capital-allocator")
+
 	alloc := NewAllocator(os.Getenv("REDIS_URL"), os.Getenv("KAFKA_BROKERS"))
 	go alloc.run()
 

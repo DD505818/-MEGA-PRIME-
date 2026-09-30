@@ -23,6 +23,7 @@ import (
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/go-redis/redis/v8"
 	"github.com/google/uuid"
+	"github.com/omega-prime-delta/modelock"
 )
 
 // ── Regime types ─────────────────────────────────────────────────────────────
@@ -39,9 +40,9 @@ const (
 
 // AgentStats tracks UCB1 bandit statistics per agent.
 type AgentStats struct {
-	Name    string
-	NTries  int
-	XBar    float64 // mean reward (Sharpe contribution)
+	Name   string
+	NTries int
+	XBar   float64 // mean reward (Sharpe contribution)
 }
 
 // UCB1 score for exploration/exploitation balance.
@@ -345,6 +346,10 @@ func (fe *FusionEngine) statsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	// PAPER/LIVE lock: fail closed unless explicitly in paper mode.
+	// LIVE is locked — no configuration can enable it.
+	modelock.RequirePaper("fusion-engine")
+
 	fe := NewFusionEngine(os.Getenv("REDIS_URL"), os.Getenv("KAFKA_BROKERS"))
 	go fe.run()
 

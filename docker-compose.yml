@@ -104,6 +104,8 @@ services:
     environment:
       KAFKA_BROKERS: kafka:9092
       REDIS_URL: redis://redis:6379
+      PAPER_MODE: ${PAPER_MODE:-true}
+      LIVE_TRADING_ENABLED: ${LIVE_TRADING_ENABLED:-false}
     ports:
       - "8085:8085"
     restart: unless-stopped
@@ -168,6 +170,8 @@ services:
     environment:
       KAFKA_BROKERS: kafka:9092
       REDIS_URL: redis://redis:6379
+      PAPER_MODE: ${PAPER_MODE:-true}
+      LIVE_TRADING_ENABLED: ${LIVE_TRADING_ENABLED:-false}
     ports:
       - "8082:8082"
     restart: unless-stopped
@@ -187,6 +191,8 @@ services:
       REDIS_URL: redis://redis:6379
       POSTGRES_DSN: ${POSTGRES_DSN:-postgresql://postgres:omega@postgres:5432/omega}
       PORTFOLIO_EQUITY: ${PORTFOLIO_EQUITY:-2000}
+      PAPER_MODE: ${PAPER_MODE:-true}
+      LIVE_TRADING_ENABLED: ${LIVE_TRADING_ENABLED:-false}
     ports:
       - "8083:8083"
     restart: unless-stopped
@@ -199,6 +205,8 @@ services:
         condition: service_healthy
     environment:
       POSTGRES_DSN: ${POSTGRES_DSN:-postgresql://postgres:omega@postgres:5432/omega}
+      PAPER_MODE: ${PAPER_MODE:-true}
+      LIVE_TRADING_ENABLED: ${LIVE_TRADING_ENABLED:-false}
     ports:
       - "8084:8084"
     restart: unless-stopped

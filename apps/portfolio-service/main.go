@@ -17,6 +17,7 @@ import (
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/go-redis/redis/v8"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/omega-prime-delta/modelock"
 )
 
 type Position struct {
@@ -293,6 +294,10 @@ func jsonF64(v interface{}) (float64, bool) {
 }
 
 func main() {
+	// PAPER/LIVE lock: fail closed unless explicitly in paper mode.
+	// LIVE is locked — no configuration can enable it.
+	modelock.RequirePaper("portfolio-service")
+
 	svc := NewPortfolioService(
 		os.Getenv("REDIS_URL"),
 		os.Getenv("KAFKA_BROKERS"),

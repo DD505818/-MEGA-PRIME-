@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-redis/redis/v8"
 	"github.com/google/uuid"
+	"github.com/omega-prime-delta/modelock"
 )
 
 var engine *RiskEngine
@@ -160,6 +161,10 @@ func (e *RiskEngine) retryControlStateRestore() {
 var controlRestoreRetryInterval = 10 * time.Second
 
 func main() {
+	// PAPER/LIVE lock: fail closed unless explicitly in paper mode.
+	// LIVE is locked — no configuration can enable it.
+	modelock.RequirePaper("risk-service")
+
 	// Fail closed: the control plane must not start without operator auth.
 	secret, err := resolveOperatorSecret()
 	if err != nil {
