@@ -73,6 +73,10 @@ jobs:
         run: |
           set -euo pipefail
           cd dist/Omega-Prime-Deployment/Deployment-Tools
+          export JWT_SECRET="ci-package-validation"
+          export AEGIS_APPROVAL_PRIVKEY="ci-package-validation"
+          export AEGIS_APPROVAL_PUBKEY="ci-package-validation"
+          export TRUTHCORE_WRITE_SECRET="ci-package-validation"
           docker compose \
             --env-file .env.example \
             -f docker-compose.package.yml \

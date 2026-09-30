@@ -41,15 +41,20 @@ Supply these as GitHub Environment secrets; never commit their values:
 - `REDIS_URL`
 - `POSTGRES_DSN`
 - `JWT_SECRET`
+- `AEGIS_APPROVAL_PRIVKEY`
+- `AEGIS_APPROVAL_PUBKEY`
+- `TRUTHCORE_WRITE_SECRET`
 - `GROQ_API_KEY` (optional)
 - `KUBE_CONFIG_B64`
 
 The deployment workflow enforces Kafka `SASL_SSL`, requires a
 `rediss://` Redis URL, and requires PostgreSQL
 `sslmode=verify-full`. It creates dependency-scoped Secrets
-(`omega-kafka`, `omega-redis`, `omega-postgres`,
-`omega-websocket`, and `omega-llm`) so workloads do not receive unrelated
-credentials.
+(`omega-kafka`, `omega-redis`, `omega-postgres`, `omega-websocket`,
+`omega-risk-authority`, `omega-execution-authority`,
+`omega-truthcore-write`, and `omega-llm`) so workloads do not receive
+unrelated credentials. The AEGIS private key is mounted only into
+risk-service; the matching public key only into execution-service.
 
 Supply these GitHub Environment variables from the managed-service provider's
 current, approved network ranges and ports:

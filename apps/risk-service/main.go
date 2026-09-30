@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/omega-prime-delta/approval"
 	"github.com/omega-prime-delta/modelock"
+	"github.com/omega-prime-delta/truthclient"
 )
 
 var engine *RiskEngine
@@ -33,6 +34,10 @@ func readyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, err := engine.producer.GetMetadata(nil, true, 2000); err != nil {
 		http.Error(w, `{"status":"not_ready","dependency":"kafka"}`, http.StatusServiceUnavailable)
+		return
+	}
+	if engine.truthClient == nil || engine.truthClient.Ready(ctx) != nil {
+		http.Error(w, `{"status":"not_ready","dependency":"truth_core"}`, http.StatusServiceUnavailable)
 		return
 	}
 	assignment, err := engine.consumer.Assignment()
@@ -185,9 +190,17 @@ func main() {
 		os.Getenv("KAFKA_BROKERS"),
 	)
 	engine.approvalPriv = approvalPriv
+	// TruthCore audit client (Phase 4, audit-or-no-trade). Writes are
+	// authenticated when TRUTHCORE_WRITE_SECRET is set.
+	truthURL := os.Getenv("TRUTHCORE_URL")
+	if truthURL == "" {
+		truthURL = "http://truth-core:8084"
+	}
+	engine.truthClient = truthclient.New(truthURL, os.Getenv("TRUTHCORE_WRITE_SECRET"))
 	engine.restoreControlState()
 	go engine.run()
 	go engine.reconcilePositionsLoop() // 1B.2: 60s position reconcile, fail-closed on divergence
+	go engine.truthVerifyLoop()        // Phase 4: 60s independent chain verification, kill on tamper
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", liveHandler)

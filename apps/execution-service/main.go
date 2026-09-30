@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/signal"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
@@ -23,6 +24,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/omega-prime-delta/approval"
 	"github.com/omega-prime-delta/modelock"
+	"github.com/omega-prime-delta/truthclient"
 )
 
 // ── FSM States ───────────────────────────────────────────────────────────────
@@ -94,6 +96,18 @@ type ExecutionEngine struct {
 	// Every signal must carry a verifiable, single-use, unexpired approval
 	// signed by the matching private key, or the order is refused.
 	approvalPub ed25519.PublicKey
+
+	// truthClient is the TruthCore audit client. Audit-or-no-trade: every
+	// submitted order is appended to the hash chain BEFORE routing; an
+	// append failure refuses the order (AUDIT_UNAVAILABLE). A nil client
+	// fails closed — nothing is submitted.
+	truthClient *truthclient.Client
+
+	// auditHalted is set when a fill could not be recorded in TruthCore.
+	// The fill already happened (paper simulation), so it cannot be
+	// un-happened; instead all NEW submissions are refused until the audit
+	// spine is reachable again. No new trade without its audit record.
+	auditHalted atomic.Bool
 }
 
 func NewExecutionEngine(redisAddr, brokers string) *ExecutionEngine {
@@ -237,8 +251,83 @@ func (e *ExecutionEngine) killActiveAtSubmit() (active, unknown bool) {
 	return killVal == "1", false
 }
 
+// recordOrderSubmitted appends the order to the TruthCore hash chain.
+// Blocking: an error refuses the order (audit-or-no-trade).
+func (e *ExecutionEngine) recordOrderSubmitted(order *Order, appr *approval.Approval) error {
+	if e.truthClient == nil {
+		return fmt.Errorf("truth client not configured")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	payload := map[string]interface{}{
+		"order_id":     order.ID,
+		"signal_id":    order.SignalID,
+		"strategy_id":  order.StrategyID,
+		"approval_id":  appr.ApprovalID,
+		"symbol":       order.Symbol,
+		"side":         order.Side,
+		"quantity":     order.Qty,
+		"limit_price":  order.LimitPrice,
+		"stop_price":   order.StopPrice,
+		"mode":         appr.Mode,
+		"submitted_at_ms": time.Now().UnixMilli(),
+	}
+	_, err := e.truthClient.Append(ctx, truthclient.EventOrderSubmitted, payload)
+	return err
+}
+
+// recordFill appends the fill to the TruthCore hash chain. A failure is
+// reported to the caller, which marks the audit gap and halts new
+// submissions — the fill cannot be un-happened.
+func (e *ExecutionEngine) recordFill(order *Order) error {
+	if e.truthClient == nil {
+		return fmt.Errorf("truth client not configured")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	approvalID, _ := order.Meta["approval_id"].(string)
+	payload := map[string]interface{}{
+		"order_id":     order.ID,
+		"signal_id":    order.SignalID,
+		"strategy_id":  order.StrategyID,
+		"approval_id":  approvalID,
+		"symbol":       order.Symbol,
+		"side":         order.Side,
+		"quantity":     order.FilledQty,
+		"fill_price":   order.AvgFill,
+		"filled_at_ms": time.Now().UnixMilli(),
+	}
+	_, err := e.truthClient.Append(ctx, truthclient.EventFill, payload)
+	return err
+}
+
+// recordRefusal appends a refusal to the hash chain. Best-effort: the
+// refusal is already the safe outcome; a failed audit write is only logged.
+func (e *ExecutionEngine) recordRefusal(signal map[string]interface{}, reason string) {
+	if e.truthClient == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+	defer cancel()
+	var approvalID string
+	if appr, ok := signal["aegis_approval"].(map[string]interface{}); ok {
+		approvalID, _ = appr["approval_id"].(string)
+	}
+	payload := map[string]interface{}{
+		"signal_id":     strOf(signal["signal_id"]),
+		"strategy_id":   strOf(signal["strategy_id"]),
+		"approval_id":   approvalID,
+		"reason":        reason,
+		"refused_at_ms": time.Now().UnixMilli(),
+	}
+	if _, err := e.truthClient.Append(ctx, truthclient.EventOrderRefused, payload); err != nil {
+		log.Printf("refusal audit failed (non-fatal): %v", err)
+	}
+}
+
 // refuse cancels an order before submission with an audited reason.
 func (e *ExecutionEngine) refuse(signal map[string]interface{}, reason string) {
+	e.recordRefusal(signal, reason)
 	order := e.signalToOrder(signal)
 	e.mu.Lock()
 	e.orders[order.ID] = order
@@ -289,13 +378,25 @@ func (e *ExecutionEngine) processSignal(signal map[string]interface{}) {
 		return
 	}
 
+	// Audit-or-no-trade: the order is durably recorded in the TruthCore
+	// hash chain BEFORE any routing or state. If the audit spine is down,
+	// the order is refused — no trade may exist without its audit record.
+	// A prior unaudited fill also halts all new submissions.
+	if e.auditHalted.Load() {
+		e.refuse(signal, "AUDIT_HALTED")
+		return
+	}
+	order.Meta["approval_id"] = appr.ApprovalID
+	order.Meta["aegis_gates_version"] = appr.GatesVersion
+	if err := e.recordOrderSubmitted(order, appr); err != nil {
+		log.Printf("ORDER %s: truth-core append failed: %v", order.ID[:8], err)
+		e.refuse(signal, "AUDIT_UNAVAILABLE")
+		return
+	}
+
 	e.mu.Lock()
 	e.orders[order.ID] = order
 	e.mu.Unlock()
-
-	// Authority verified: record the approval lineage on the order.
-	order.Meta["approval_id"] = appr.ApprovalID
-	order.Meta["aegis_gates_version"] = appr.GatesVersion
 
 	e.transition(order, StateRiskPending)
 
@@ -328,6 +429,21 @@ func (e *ExecutionEngine) processSignal(signal map[string]interface{}) {
 		order.FilledQty = order.Qty
 		order.Slippage = ((fillPrice - order.LimitPrice) / order.LimitPrice) * 10_000
 		e.transition(order, StateFilled)
+		// The fill is durably recorded in the hash chain. If the append
+		// fails the fill cannot be un-happened, so the order is marked
+		// audit_gap and ALL new submissions halt until the audit spine
+		// recovers — audit-or-no-trade.
+		if err := e.recordFill(order); err != nil {
+			log.Printf("ORDER %s: FILL NOT AUDITED: %v — halting new submissions", order.ID[:8], err)
+			order.Meta["audit_gap"] = true
+			order.Meta["audit_gap_error"] = err.Error()
+			e.auditHalted.Store(true)
+			// Structured critical log: the durable record of the gap.
+			// (execution-service has no alert topic; the halt is enforced
+			// in-process via auditHalted and visible in order Meta.)
+			log.Printf("CRITICAL FILL_AUDIT_GAP order_id=%s approval_id=%s error=%q",
+				order.ID, order.Meta["approval_id"], err.Error())
+		}
 	}
 
 	e.publish("orders.fills", order)
@@ -389,6 +505,9 @@ func (e *ExecutionEngine) transition(order *Order, state OrderState) {
 }
 
 func (e *ExecutionEngine) publish(topic string, order *Order) {
+	if e.producer == nil {
+		return
+	}
 	msg, _ := json.Marshal(order)
 	_ = e.producer.Produce(&kafka.Message{
 		TopicPartition: kafka.TopicPartition{
@@ -554,6 +673,13 @@ func main() {
 		os.Getenv("REDIS_URL"),
 		os.Getenv("KAFKA_BROKERS"),
 	)
+	// TruthCore audit client (Phase 4, audit-or-no-trade). Writes are
+	// authenticated when TRUTHCORE_WRITE_SECRET is set.
+	truthURL := os.Getenv("TRUTHCORE_URL")
+	if truthURL == "" {
+		truthURL = "http://truth-core:8084"
+	}
+	eng.truthClient = truthclient.New(truthURL, os.Getenv("TRUTHCORE_WRITE_SECRET"))
 	go eng.run()
 
 	mux := http.NewServeMux()
@@ -571,6 +697,10 @@ func main() {
 		}
 		if _, err := eng.producer.GetMetadata(nil, true, 2000); err != nil {
 			http.Error(w, `{"status":"not_ready","dependency":"kafka"}`, http.StatusServiceUnavailable)
+			return
+		}
+		if eng.truthClient == nil || eng.truthClient.Ready(ctx) != nil {
+			http.Error(w, `{"status":"not_ready","dependency":"truth_core"}`, http.StatusServiceUnavailable)
 			return
 		}
 		assignment, err := eng.consumer.Assignment()

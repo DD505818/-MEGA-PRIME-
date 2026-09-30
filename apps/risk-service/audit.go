@@ -124,6 +124,12 @@ func (r *RiskEngine) postControlAuditToTruthCore(action string, fields map[strin
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	// Phase 4: truth-core authenticates /append when TRUTHCORE_WRITE_SECRET
+	// is set. This best-effort control-audit path must carry the same bearer
+	// token as the trade-lifecycle path, or its appends get 401.
+	if secret := os.Getenv("TRUTHCORE_WRITE_SECRET"); secret != "" {
+		req.Header.Set("Authorization", "Bearer "+secret)
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("truth-core append: %w", err)

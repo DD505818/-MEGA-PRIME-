@@ -22,6 +22,9 @@ jobs:
       REDIS_URL: ${{ secrets.REDIS_URL }}
       POSTGRES_DSN: ${{ secrets.POSTGRES_DSN }}
       JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      AEGIS_APPROVAL_PRIVKEY: ${{ secrets.AEGIS_APPROVAL_PRIVKEY }}
+      AEGIS_APPROVAL_PUBKEY: ${{ secrets.AEGIS_APPROVAL_PUBKEY }}
+      TRUTHCORE_WRITE_SECRET: ${{ secrets.TRUTHCORE_WRITE_SECRET }}
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
       KAFKA_EGRESS_CIDR: ${{ vars.KAFKA_EGRESS_CIDR }}
       KAFKA_EGRESS_PORT: ${{ vars.KAFKA_EGRESS_PORT }}
@@ -44,6 +47,9 @@ jobs:
           test -n "$KAFKA_SASL_USERNAME"
           test -n "$KAFKA_SASL_PASSWORD"
           test -n "$JWT_SECRET"
+          test -n "$AEGIS_APPROVAL_PRIVKEY"
+          test -n "$AEGIS_APPROVAL_PUBKEY"
+          test -n "$TRUTHCORE_WRITE_SECRET"
           test "$MANAGED_EGRESS_APPROVED" = "true"
           [[ "$REDIS_URL" == rediss://* ]]
           [[ "$POSTGRES_DSN" == *"sslmode=verify-full"* ]]
@@ -103,6 +109,18 @@ jobs:
             --dry-run=client -o yaml | kubectl apply -f -
           kubectl -n omega-prime create secret generic omega-websocket \
             --from-literal=JWT_SECRET="$JWT_SECRET" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n omega-prime create secret generic omega-risk-authority \
+            --from-literal=JWT_SECRET="$JWT_SECRET" \
+            --from-literal=AEGIS_APPROVAL_PRIVKEY="$AEGIS_APPROVAL_PRIVKEY" \
+            --from-literal=TRUTHCORE_WRITE_SECRET="$TRUTHCORE_WRITE_SECRET" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n omega-prime create secret generic omega-execution-authority \
+            --from-literal=AEGIS_APPROVAL_PUBKEY="$AEGIS_APPROVAL_PUBKEY" \
+            --from-literal=TRUTHCORE_WRITE_SECRET="$TRUTHCORE_WRITE_SECRET" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n omega-prime create secret generic omega-truthcore-write \
+            --from-literal=TRUTHCORE_WRITE_SECRET="$TRUTHCORE_WRITE_SECRET" \
             --dry-run=client -o yaml | kubectl apply -f -
           kubectl -n omega-prime create secret generic omega-llm \
             --from-literal=GROQ_API_KEY="$GROQ_API_KEY" \

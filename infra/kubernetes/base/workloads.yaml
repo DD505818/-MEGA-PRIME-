@@ -16,7 +16,7 @@ spec:
         - name: risk-service
           image: ghcr.io/dd505818/omega-prime-risk-service@sha256:e8c9d6d0bbf7d7cee5943a5645ae0b29cffd3dfd6db224c2a8b2827eaa478aa4
           imagePullPolicy: IfNotPresent
-          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-kafka}}, {secretRef: {name: omega-redis}}]
+          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-kafka}}, {secretRef: {name: omega-redis}}, {secretRef: {name: omega-risk-authority}}]
           ports: [{name: http, containerPort: 8080}]
           readinessProbe: {httpGet: {path: /health/ready, port: http}, timeoutSeconds: 5, periodSeconds: 5, failureThreshold: 3}
           livenessProbe: {httpGet: {path: /health/live, port: http}, timeoutSeconds: 5, initialDelaySeconds: 15, periodSeconds: 10}
@@ -48,7 +48,7 @@ spec:
       containers:
         - name: execution-service
           image: ghcr.io/dd505818/omega-prime-execution-service@sha256:b84da9e123de44da34aab92728d8f2fac620cfb06b6d04a1f639a1099226f11d
-          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-kafka}}, {secretRef: {name: omega-redis}}]
+          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-kafka}}, {secretRef: {name: omega-redis}}, {secretRef: {name: omega-execution-authority}}]
           ports: [{name: http, containerPort: 8081}]
           readinessProbe: {httpGet: {path: /health/ready, port: http}, timeoutSeconds: 5, periodSeconds: 5, failureThreshold: 3}
           livenessProbe: {httpGet: {path: /health/live, port: http}, timeoutSeconds: 5, initialDelaySeconds: 15, periodSeconds: 10}
@@ -111,7 +111,7 @@ spec:
       containers:
         - name: truth-core
           image: ghcr.io/dd505818/omega-prime-truth-core@sha256:6f46f066b598bac9fad73b1a9d366d0ef68fcc8b39cacd0ca18f4ac92e44e5a1
-          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-postgres}}]
+          envFrom: [{configMapRef: {name: omega-runtime}}, {secretRef: {name: omega-postgres}}, {secretRef: {name: omega-truthcore-write}}]
           ports: [{name: http, containerPort: 8084}]
           readinessProbe: {httpGet: {path: /health/ready, port: http}, timeoutSeconds: 5, periodSeconds: 5, failureThreshold: 3}
           livenessProbe: {httpGet: {path: /health/live, port: http}, timeoutSeconds: 5, initialDelaySeconds: 15, periodSeconds: 10}

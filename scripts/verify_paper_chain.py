@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import subprocess
 import time
 import urllib.error
@@ -69,10 +70,19 @@ def wait_json(url: str, predicate, timeout: int = 120):
 
 
 def audit(event_type: str, payload: object) -> object:
-    return request_json(
+    secret = os.environ.get("TRUTHCORE_WRITE_SECRET", "")
+    body = json.dumps({"event_type": event_type, "payload": payload}).encode()
+    req = urllib.request.Request(
         "http://127.0.0.1:8084/append",
-        {"event_type": event_type, "payload": payload},
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {secret}",
+        },
+        method="POST",
     )
+    with urllib.request.urlopen(req, timeout=5) as response:
+        return json.load(response)
 
 
 def main() -> None:
@@ -94,11 +104,21 @@ def main() -> None:
         },
     }
     for service, variables in expected_env.items():
+        container_id = run("docker", "compose", "ps", "-q", service)
+        if not container_id:
+            raise RuntimeError(f"{service} container is not running")
+        env_text = run(
+            "docker", "inspect",
+            "--format", "{{range .Config.Env}}{{println .}}{{end}}",
+            container_id,
+        )
+        container_env = {}
+        for line in env_text.splitlines():
+            if "=" in line:
+                key, value = line.split("=", 1)
+                container_env[key] = value
         for key, expected in variables.items():
-            actual = run(
-                "docker", "compose", "exec", "-T", service,
-                "sh", "-c", f'printf %s "${key}"',
-            )
+            actual = container_env.get(key, "")
             if actual != expected:
                 raise RuntimeError(
                     f"{service} is not fail-closed: {key}={actual!r}, expected {expected!r}"
@@ -116,7 +136,12 @@ def main() -> None:
     )
     if live_attempt.returncode == 0:
         raise RuntimeError("execution service accepted LIVE mode before certification")
-    if "LIVE execution is disabled" not in live_attempt.stderr:
+    guard_text = live_attempt.stderr.lower()
+    if not (
+        "live" in guard_text
+        and ("locked" in guard_text or "disabled" in guard_text)
+        and ("modelock" in guard_text or "refusing to start" in guard_text)
+    ):
         raise RuntimeError(f"unexpected LIVE guard failure: {live_attempt.stderr}")
 
     now_ms = str(int(time.time() * 1000))
@@ -139,7 +164,7 @@ def main() -> None:
         "docker", "compose", "exec", "-T", "kafka",
         "kafka-console-producer",
         "--bootstrap-server", "kafka:9092",
-        "--topic", "signals.raw",
+        "--topic", "signals.sized",
         input_text=json.dumps(SIGNAL) + "\n",
     )
 
@@ -218,21 +243,31 @@ def main() -> None:
         raise RuntimeError(f"reconciliation mismatch: {reconciliation}")
 
     verification = request_json("http://127.0.0.1:8084/verify")
-    if not verification.get("valid") or verification.get("verified_entries", 0) < 6:
+    # Six PAPER proof events plus the automatic immutable authority/execution
+    # lineage: approval_issued -> order_submitted -> fill.
+    if not verification.get("valid") or verification.get("verified_entries", 0) < 9:
         raise RuntimeError(f"TruthCore verification failed: {verification}")
     recent = request_json("http://127.0.0.1:8084/recent")
-    expected_events = [
+    observed_events = [entry["event_type"] for entry in reversed(recent)]
+    required_subsequence = [
         "paper.market_snapshot",
         "paper.proposal",
+        "aegis.approval_issued",
+        "vulture.order_submitted",
+        "vulture.fill",
         "paper.risk_approved",
         "paper.fill",
         "paper.position",
         "paper.reconciliation",
     ]
-    observed_events = [entry["event_type"] for entry in reversed(recent[:6])]
-    if observed_events != expected_events:
+    cursor = 0
+    for event in observed_events:
+        if cursor < len(required_subsequence) and event == required_subsequence[cursor]:
+            cursor += 1
+    if cursor != len(required_subsequence):
         raise RuntimeError(
-            f"TruthCore lifecycle mismatch: {observed_events} != {expected_events}"
+            f"TruthCore lifecycle missing ordered evidence: "
+            f"observed={observed_events}, required={required_subsequence}"
         )
 
     result = {

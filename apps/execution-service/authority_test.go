@@ -26,7 +26,7 @@ func testRig(t *testing.T) (*ExecutionEngine, ed25519.PrivateKey, *miniredis.Min
 	}
 	s := miniredis.RunT(t)
 	rdb := redis.NewClient(&redis.Options{Addr: s.Addr()})
-	e := &ExecutionEngine{redis: rdb, approvalPub: pub, orders: make(map[string]*Order)}
+	e := &ExecutionEngine{redis: rdb, approvalPub: pub, orders: make(map[string]*Order), paperMode: true}
 	return e, priv, s
 }
 

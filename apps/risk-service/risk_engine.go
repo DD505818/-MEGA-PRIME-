@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -17,6 +18,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/omega-prime-delta/approval"
 	"github.com/omega-prime-delta/modelock"
+	"github.com/omega-prime-delta/truthclient"
 )
 
 // RiskEngine implements the 14-gate AEGIS Governor.
@@ -39,6 +41,23 @@ type RiskEngine struct {
 	// that orders transitions for audit and post-incident review.
 	controlMu  sync.Mutex
 	controlSeq atomic.Int64
+
+	// truthClient is the TruthCore audit client. Audit-or-no-trade: every
+	// issued approval is appended to the hash chain BEFORE the signal is
+	// forwarded; an append failure rejects the signal (TRUTHCORE_APPEND_FAILED).
+	// A nil client fails closed — no approvals are issued.
+	truthClient *truthclient.Client
+
+	// truthTip tracks the last independently verified chain tip
+	// (id + hash) for the tamper-detection loop.
+	truthTipID   int64
+	truthTipHash string
+	// truthLastFull is the last full from-genesis re-verification. The
+	// incremental check pins the tip (catching any historical rewrite via
+	// tip-hash mismatch), but only a full re-verification catches
+	// corruption of already-verified entries that leaves the tip intact.
+	truthLastFull time.Time
+	truthMu      sync.Mutex
 
 	// stateVerified is false when the process booted without successfully
 	// reading the durable kill state (Redis unavailable). Until verified,
@@ -469,6 +488,127 @@ func (r *RiskEngine) issueApproval(signal map[string]interface{}) *approval.Appr
 	return a
 }
 
+// recordApprovalIssued appends the approval to the TruthCore hash chain.
+// Blocking with a short timeout: an error fails the approval (audit-or-no-trade).
+func (r *RiskEngine) recordApprovalIssued(a *approval.Approval) error {
+	if r.truthClient == nil {
+		return fmt.Errorf("truth client not configured")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	payload := map[string]interface{}{
+		"approval_id":  a.ApprovalID,
+		"signal_id":    a.SignalID,
+		"strategy_id":  a.StrategyID,
+		"symbol":       a.Symbol,
+		"side":         a.Side,
+		"quantity":     a.Quantity,
+		"limit_price":  a.LimitPrice,
+		"stop_price":   a.StopPrice,
+		"mode":         a.Mode,
+		"issued_at_ms": a.IssuedAtMs,
+		"gates_version": a.GatesVersion,
+	}
+	_, err := r.truthClient.Append(ctx, truthclient.EventApprovalIssued, payload)
+	return err
+}
+
+// truthVerifyLoop independently re-verifies the TruthCore hash chain every
+// 60s — recomputing every link locally, trusting nothing but the raw entry
+// bytes. On any tamper evidence (broken link, rewritten hash, truncation,
+// fork) it engages the kill switch: trading must not continue on a
+// compromised audit spine. Verification errors (TruthCore unreachable) only
+// alert, because the audit-or-no-trade append gate already blocks new
+// approvals while the spine is down.
+func (r *RiskEngine) truthVerifyLoop() {
+	if r.truthClient == nil {
+		log.Println("truth-verify: no truth client configured, loop disabled")
+		return
+	}
+	ticker := time.NewTicker(60 * time.Second)
+	defer ticker.Stop()
+	for {
+		r.truthVerifyOnce()
+		<-ticker.C
+	}
+}
+
+func (r *RiskEngine) truthVerifyOnce() {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	r.truthMu.Lock()
+	tipID, tipHash := r.truthTipID, r.truthTipHash
+	// Full from-genesis re-verification on the first run and hourly
+	// thereafter: the incremental check pins the tip hash (so any
+	// historical rewrite changes the tip and is caught), but only a full
+	// pass re-reads already-verified entries and catches corruption that
+	// leaves the tip intact.
+	doFull := tipID == 0 || time.Since(r.truthLastFull) > time.Hour
+	r.truthMu.Unlock()
+
+	var (
+		newID   int64
+		newHash string
+		err     error
+	)
+	if doFull {
+		var n int
+		n, err = r.truthClient.VerifyIndependent(ctx)
+		if err == nil {
+			head, herr := r.truthClient.Head(ctx)
+			if herr != nil {
+				err = herr
+			} else {
+				newID, newHash = head.ID, head.Hash
+				log.Printf("truth-verify: full independent verification OK (%d entries, tip %d)", n, head.ID)
+			}
+		}
+	} else {
+		var n int
+		newID, newHash, n, err = r.truthClient.VerifyIncremental(ctx, tipID, tipHash)
+		if err == nil && n > 0 {
+			log.Printf("truth-verify: incremental verification OK (%d new entries, tip %d)", n, newID)
+		}
+	}
+
+	if err != nil {
+		// Typed integrity failures (broken link, hash mismatch, truncation,
+		// gap, fork, rewrite, broken genesis anchor) are tamper evidence:
+		// engage the kill switch — trading must not continue on a
+		// compromised audit spine. Transport errors only alert, because the
+		// audit-or-no-trade append gate already blocks new approvals while
+		// the spine is unreachable.
+		msg := err.Error()
+		var ierr *truthclient.IntegrityError
+		if errors.As(err, &ierr) {
+			log.Printf("truth-verify: TAMPER EVIDENCE: %v — engaging kill switch", err)
+			if _, kerr := r.activateKillSwitch("truthcore chain verification failed: " + msg); kerr != nil {
+				log.Printf("truth-verify: kill switch engagement failed: %v", kerr)
+			}
+			r.publishAlert(context.Background(), "critical", map[string]interface{}{
+				"event":  "TRUTHCORE_TAMPER_DETECTED",
+				"detail": msg,
+			})
+		} else {
+			log.Printf("truth-verify: unreachable (%v); append gate already blocks new approvals", err)
+			r.publishAlert(context.Background(), "warning", map[string]interface{}{
+				"event":  "TRUTHCORE_UNREACHABLE",
+				"detail": msg,
+			})
+		}
+		return
+	}
+
+	r.truthMu.Lock()
+	r.truthTipID = newID
+	r.truthTipHash = newHash
+	if doFull {
+		r.truthLastFull = time.Now()
+	}
+	r.truthMu.Unlock()
+}
+
 func (r *RiskEngine) run() {
 	log.Println("AEGIS Governor online — 14 gates active")
 	for {
@@ -500,9 +640,26 @@ func (r *RiskEngine) run() {
 					log.Printf("REJECT [%s] %s → APPROVAL_SIGNING_UNAVAILABLE", signal["strategy_id"], signal["signal_id"])
 				} else {
 					appr := r.issueApproval(signal)
-					signal["aegis_approval"] = appr.ToMap()
-					r.forward("signals.approved", signal)
-					log.Printf("APPROVED [%s] %s approval=%s", signal["strategy_id"], signal["signal_id"], appr.ApprovalID[:8])
+					// Audit-or-no-trade: the approval is durably recorded in
+					// the TruthCore hash chain BEFORE the signal is forwarded.
+					// If the audit spine is down, the signal is rejected —
+					// no trade may exist without its audit record.
+					if err := r.recordApprovalIssued(appr); err != nil {
+						signal["reject_reason"] = "TRUTHCORE_APPEND_FAILED"
+						signal["risk_approved"] = false
+						r.forward("signals.rejected", signal)
+						r.publishAlert(context.Background(), "critical", map[string]interface{}{
+							"event":       "TRUTHCORE_APPEND_FAILED",
+							"signal_id":   strOf(signal["signal_id"]),
+							"approval_id": appr.ApprovalID,
+							"error":       err.Error(),
+						})
+						log.Printf("REJECT [%s] %s → TRUTHCORE_APPEND_FAILED: %v", signal["strategy_id"], signal["signal_id"], err)
+					} else {
+						signal["aegis_approval"] = appr.ToMap()
+						r.forward("signals.approved", signal)
+						log.Printf("APPROVED [%s] %s approval=%s", signal["strategy_id"], signal["signal_id"], appr.ApprovalID[:8])
+					}
 				}
 			} else {
 				signal["reject_reason"] = reason
