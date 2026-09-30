@@ -59,9 +59,38 @@ type Head struct {
 	Hash    string `json:"hash"`
 }
 
+// CanonicalPayload returns the transport-stable canonical form of an audit
+// payload: the exact byte string the hash chain commits to.
+//
+// truth-core's stored payloads come out of PostgreSQL jsonb in its text form
+// (key-sorted, spaced: {"i": -1}), but the HTTP encoder compacts
+// json.RawMessage on the wire ({"i":-1}) and HTML-escapes <, >, & inside
+// strings. Hashing any single one of those forms makes the server and an
+// independent client disagree on a healthy chain. CanonicalPayload applies
+// exactly the transformation the encoder applies — compaction plus HTML
+// escaping — so it maps both the PostgreSQL form and the wire form to the
+// same bytes and is idempotent on already-served payloads.
+//
+// Number literals are never re-rendered: compaction preserves PostgreSQL's
+// normalized number text byte-for-byte (arbitrary-precision jsonb numerics
+// included). A parse-and-remarshal canonicalization through float64 could
+// not guarantee that, so it is deliberately not used.
+func CanonicalPayload(payload []byte) []byte {
+	if len(payload) == 0 {
+		return payload
+	}
+	canonical, err := json.Marshal(json.RawMessage(payload))
+	if err != nil {
+		return payload
+	}
+	return canonical
+}
+
 // ComputeHash recomputes the entry hash exactly as the server does:
-// SHA-256(prev_hash || 0x00 || event_type || 0x00 || canonical_payload).
+// SHA-256(prev_hash || 0x00 || event_type || 0x00 || canonical_payload),
+// where canonical_payload is CanonicalPayload(payload).
 func ComputeHash(prevHash, eventType string, payload []byte) string {
+	payload = CanonicalPayload(payload)
 	h := sha256.New()
 	h.Write([]byte(prevHash))
 	h.Write([]byte{0})
@@ -205,13 +234,15 @@ func integrityErr(format string, args ...interface{}) *IntegrityError {
 }
 
 // verifyBatch checks one contiguous batch: the first entry's prev_hash must
-// equal expectedPrev, every link must recompute, and ids must be contiguous.
+// equal expectedPrev and every link must recompute. Entry ids are NOT
+// required to be contiguous: PostgreSQL sequences burn ids on rolled-back
+// appends (e.g. serialization failures under burst), so id gaps are benign.
+// A deleted or reordered entry is still caught, because the following
+// entry's stored prev_hash names the missing entry's hash, not its
+// predecessor's.
 func verifyBatch(entries []Entry, expectedPrev string) (string, error) {
 	prev := expectedPrev
-	for i, e := range entries {
-		if i > 0 && e.ID != entries[i-1].ID+1 {
-			return "", integrityErr("id gap: entry %d follows %d", e.ID, entries[i-1].ID)
-		}
+	for _, e := range entries {
 		if e.PrevHash != prev {
 			return "", integrityErr("chain broken at id=%d: expected prev_hash %.12s, got %.12s",
 				e.ID, prev, e.PrevHash)
@@ -242,10 +273,9 @@ func (c *Client) VerifyIndependent(ctx context.Context) (int, error) {
 		if len(entries) == 0 {
 			return count, nil
 		}
-		// Contiguity with the previous page.
-		if count > 0 && entries[0].ID != since+1 {
-			return count, integrityErr("page gap: expected id %d, got %d", since+1, entries[0].ID)
-		}
+		// Continuity with the previous page is enforced by the prev_hash
+		// linkage inside verifyBatch, not by id adjacency (ids may gap
+		// where appends rolled back — see verifyBatch).
 		newPrev, err := verifyBatch(entries, prev)
 		if err != nil {
 			return count, err
@@ -258,8 +288,10 @@ func (c *Client) VerifyIndependent(ctx context.Context) (int, error) {
 
 // VerifyIncremental verifies entries after a previously verified tip
 // (tipID, tipHash) and anchors against the current server head. It detects
-// truncation (head moved backwards), forks (head hash mismatch after a clean
-// batch), and gaps. Returns the new verified tip.
+// truncation (head moved backwards), forks (head hash mismatch after a
+// clean batch), and broken linkage. Benign id gaps left by rolled-back
+// appends are tolerated; the prev_hash chain, not id adjacency, is the
+// integrity evidence. Returns the new verified tip.
 func (c *Client) VerifyIncremental(ctx context.Context, tipID int64, tipHash string) (int64, string, int, error) {
 	head, err := c.Head(ctx)
 	if err != nil {
@@ -299,9 +331,9 @@ func (c *Client) VerifyIncremental(ctx context.Context, tipID int64, tipHash str
 		if len(entries) == 0 {
 			break
 		}
-		if entries[0].ID != since+1 {
-			return tipID, tipHash, count, integrityErr("gap after id %d: next is %d", since, entries[0].ID)
-		}
+		// The first entry after the tip need not be tipID+1: ids burned by
+		// rolled-back appends leave gaps. verifyBatch's prev_hash linkage
+		// against the verified tip is the continuity check.
 		newPrev, err := verifyBatch(entries, prev)
 		if err != nil {
 			return tipID, tipHash, count, err
