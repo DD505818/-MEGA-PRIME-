@@ -430,9 +430,9 @@ func (tc *TruthCore) lineageHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	// PAPER/LIVE lock: fail closed unless explicitly in paper mode.
-	// LIVE is locked — no configuration can enable it.
-	modelock.RequirePaper("truth-core")
+	// PAPER/LIVE contract: startup succeeds only for one unambiguous,
+	// fully gated runtime mode. Invalid combinations fail closed.
+	modelock.RequireMode("truth-core")
 
 	dsn := os.Getenv("POSTGRES_DSN")
 	if dsn == "" {
