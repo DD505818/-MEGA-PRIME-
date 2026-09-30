@@ -143,18 +143,20 @@ def cscv_probability_of_backtest_overfitting(
     }
 
 
-def candidate_metrics(returns_matrix, candidate_names: list[str], *, periods_per_year: int) -> dict[str, dict[str, float]]:
+def candidate_metrics(returns_matrix, candidate_names: list[str], *, periods_per_year: int) -> dict[str, dict[str, float | None]]:
     matrix = np.asarray(returns_matrix, dtype=float)
     if matrix.ndim != 2 or matrix.shape[1] != len(candidate_names):
         raise ValueError("candidate_names must match returns matrix columns")
-    out: dict[str, dict[str, float]] = {}
+    out: dict[str, dict[str, float | None]] = {}
     for idx, name in enumerate(candidate_names):
         r = matrix[:, idx]
+        sortino = sortino_ratio(r, periods_per_year=periods_per_year)
+        pf = profit_factor(r)
         out[name] = {
             "sharpe": sharpe_ratio(r, periods_per_year=periods_per_year),
-            "sortino": sortino_ratio(r, periods_per_year=periods_per_year),
+            "sortino": sortino if math.isfinite(sortino) else None,
             "max_drawdown": max_drawdown(r),
-            "profit_factor": profit_factor(r),
+            "profit_factor": pf if math.isfinite(pf) else None,
             "hit_rate": float(np.mean(r > 0)),
             "total_return": float(np.prod(1.0 + r) - 1.0),
         }
