@@ -7,3 +7,5 @@ build
 *.log
 *.db
 target/
+backtests/artifacts/
+backtests/data/raw/
