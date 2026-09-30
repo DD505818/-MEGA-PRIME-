@@ -1,12 +1,11 @@
-# Kill Switch — Enforcement Status: PARTIAL
+# Kill Switch — Execution-Boundary Status: FAIL-CLOSED
 
-The kill switch **sets** a durable flag correctly (Phase 1A) and — as of
-Phase 1B.2 — **enforces** it on the risk-service validation path (Gate 1)
-and reactively in execution-service (`emergency.halt` → cancel tracked
-orders). The 1B.2 pre-submit check closes the approve→submit race window
-when Redis is reachable, but it **fails open on Redis errors** (see the
-pre-submit row below). Until that gap is closed, this is PARTIAL
-enforcement, not ENFORCED.
+The kill switch **sets** a durable flag correctly (Phase 1A), enforces it on
+the risk-service validation path (Gate 1), reacts to `emergency.halt` in
+execution-service, and now **fails closed at the execution pre-submit
+boundary**. The old Redis `.Val()` fail-open bug was fixed in Phase 3:
+an unreadable durable kill state refuses submission with
+`KILL_SWITCH_STATE_UNKNOWN`.
 
 ## Who sets the flag
 
@@ -29,12 +28,16 @@ durable state is read).
 |--------|----------|
 | risk-service Gate 1 (`validate`) | Reads the in-memory flag on every signal. New validations stop immediately after a kill. ✅ |
 | execution-service `handleHalt` | Reacts to `emergency.halt` by cancelling routed / partially-filled / approved orders and writing `kill:confirmed`. Reactive. ✅ |
-| execution-service `processSignal` | **Pre-submit check (1B.2):** reads the durable `kill_switch` flag before routing/filling. On `1`, the order transitions to CANCELLED with `cancel_reason=KILL_SWITCH_ACTIVE_AT_SUBMIT` and is never submitted. This closes the approve→submit race window. ⚠️ **Fail-open gap:** the check uses `.Val()` and ignores Redis errors — a Redis outage at submit time reads as "not killed" and the order proceeds. Fix: fail closed on store error (open). |
+| execution-service `processSignal` | **Pre-submit check:** reads the durable `kill_switch` flag before routing/filling. On `1`, the order is cancelled with `KILL_SWITCH_ACTIVE_AT_SUBMIT`. Redis/store errors produce `KILL_SWITCH_STATE_UNKNOWN` and refuse submission. ✅ |
 
 ## Residual notes
 
-- **Open (1B.2 gap):** the pre-submit check fails open on Redis errors.
-  Until it fails closed on store error, enforcement status is PARTIAL.
+- The former 1B.2 Redis fail-open gap is closed and covered by the Phase 3
+  authority-boundary adversarial tests.
+- **Still required before LIVE:** prove kill-state consistency across replicas
+  and broker-authoritative cancellation under network partitions/failure
+  injection. Execution-boundary fail-closed behavior is necessary but is not
+  by itself LIVE certification.
 - The pre-submit check reads the durable Redis flag rather than relying on
   the `emergency.halt` Kafka message, so it holds even if Kafka delivery lags
   or the execution-service restarted after the halt broadcast.
