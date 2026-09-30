@@ -104,11 +104,21 @@ def main() -> None:
         },
     }
     for service, variables in expected_env.items():
+        container_id = run("docker", "compose", "ps", "-q", service)
+        if not container_id:
+            raise RuntimeError(f"{service} container is not running")
+        env_text = run(
+            "docker", "inspect",
+            "--format", "{{range .Config.Env}}{{println .}}{{end}}",
+            container_id,
+        )
+        container_env = {}
+        for line in env_text.splitlines():
+            if "=" in line:
+                key, value = line.split("=", 1)
+                container_env[key] = value
         for key, expected in variables.items():
-            actual = run(
-                "docker", "compose", "exec", "-T", service,
-                "sh", "-c", f'printf %s "${key}"',
-            )
+            actual = container_env.get(key, "")
             if actual != expected:
                 raise RuntimeError(
                     f"{service} is not fail-closed: {key}={actual!r}, expected {expected!r}"
