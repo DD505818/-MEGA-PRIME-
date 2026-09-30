@@ -1,12 +1,11 @@
-FROM rust:1.85-bookworm AS builder
+FROM rust:1.88-bookworm AS builder
 RUN apt-get update \
     && apt-get install -y --no-install-recommends cmake libssl-dev pkg-config zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY Cargo.toml ./
+COPY Cargo.toml Cargo.lock ./
 RUN mkdir src \
     && printf 'fn main() {}\n' > src/main.rs \
-    && cargo generate-lockfile \
     && cargo build --release --locked
 COPY . .
 RUN cargo build --release --locked
