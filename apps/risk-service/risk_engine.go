@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
+	"github.com/omega-prime-delta/modelock"
 )
 
 // RiskEngine implements the 14-gate AEGIS Governor.
@@ -113,11 +114,16 @@ func (r *RiskEngine) validate(signal map[string]interface{}) (bool, string, floa
 	}
 
 	// ── Gate 3: Paper/Live Mode Mismatch ────────────────────────────────────
-	paperMode := os.Getenv("PAPER_MODE")
+	// Canonical mode comes from modelock: the process is locked to paper at
+	// startup (RequirePaper in main). This gate additionally rejects any
+	// signal declaring a non-paper mode, and refuses validation entirely if
+	// the process is somehow not in paper mode. Ambiguous mode → reject.
 	signalMode, _ := signal["mode"].(string)
-	isLiveEnv := paperMode == "" || strings.ToLower(paperMode) != "true"
-	if isLiveEnv && signalMode == "paper" {
-		return false, "GATE3_PAPER_SIGNAL_IN_LIVE_ENV", 0
+	if !modelock.IsPaper() {
+		return false, "GATE3_NOT_IN_PAPER_MODE", 0
+	}
+	if signalMode != "" && !strings.EqualFold(strings.TrimSpace(signalMode), "paper") {
+		return false, "GATE3_SIGNAL_MODE_MISMATCH", 0
 	}
 
 	// ── Gate 4: Broker Health ───────────────────────────────────────────────

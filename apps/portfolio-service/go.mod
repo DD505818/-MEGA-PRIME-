@@ -18,3 +18,7 @@ require (
 	golang.org/x/sync v0.1.0 // indirect
 	golang.org/x/text v0.9.0 // indirect
 )
+
+require github.com/omega-prime-delta/modelock v0.0.0
+
+replace github.com/omega-prime-delta/modelock => ../modelock

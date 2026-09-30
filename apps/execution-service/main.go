@@ -20,6 +20,7 @@ import (
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/go-redis/redis/v8"
 	"github.com/google/uuid"
+	"github.com/omega-prime-delta/modelock"
 )
 
 // ── FSM States ───────────────────────────────────────────────────────────────
@@ -89,10 +90,10 @@ type ExecutionEngine struct {
 }
 
 func NewExecutionEngine(redisAddr, brokers string) *ExecutionEngine {
-	paperMode := os.Getenv("PAPER_MODE") == "" || os.Getenv("PAPER_MODE") == "true"
-	if !paperMode || os.Getenv("LIVE_TRADING_ENABLED") == "true" {
-		log.Fatal("LIVE execution is disabled pending broker certification and failure testing")
-	}
+	// PAPER/LIVE lock (Phase 2 program): the process cannot start unless it
+	// proves paper mode. LIVE is locked — no configuration can enable it.
+	modelock.RequirePaper("execution-service")
+	paperMode := modelock.IsPaper() // always true here; kept for submit-path clarity
 
 	rdb := newRedisClient(redisAddr)
 
@@ -162,6 +163,18 @@ func (e *ExecutionEngine) handleHalt() {
 
 func (e *ExecutionEngine) processSignal(signal map[string]interface{}) {
 	order := e.signalToOrder(signal)
+
+	// PAPER/LIVE lock: re-assert paper mode on every worker message, so a
+	// mode change after startup can never leak an order toward a live venue.
+	if err := modelock.AssertPaper(); err != nil {
+		e.mu.Lock()
+		e.orders[order.ID] = order
+		e.mu.Unlock()
+		e.transition(order, StateCancelled)
+		order.Meta["cancel_reason"] = "MODELOCK_REFUSAL"
+		log.Printf("ORDER %s: submission refused — %v", order.ID[:8], err)
+		return
+	}
 
 	// Pre-submit kill check (1B.2). The kill flag is durable state owned by
 	// risk-service. A signal approved before a kill must not be submitted
@@ -238,55 +251,12 @@ func (e *ExecutionEngine) paperFill(order *Order) (float64, error) {
 	return order.LimitPrice * (1 - impact + jitter), nil
 }
 
-// liveFill sends order to broker (paper simulation delegates to paperFill in non-live).
+// liveFill is the future broker integration point. LIVE is locked: this
+// function must never execute a real order. It returns a hard error instead
+// of silently simulating, so any accidental routing to it is loud and the
+// order fails instead of filling against a phantom venue.
 func (e *ExecutionEngine) liveFill(order *Order, params map[string]interface{}) (float64, error) {
-	switch order.Type {
-	case TypeTWAP:
-		return e.executeTWAP(order, params)
-	case TypeIceberg:
-		return e.executeIceberg(order, params)
-	default:
-		return e.paperFill(order) // broker integration point
-	}
-}
-
-func (e *ExecutionEngine) executeTWAP(order *Order, params map[string]interface{}) (float64, error) {
-	slices := 5
-	if n, ok := params["n_slices"].(int); ok {
-		slices = n
-	}
-	sliceQty := order.Qty / float64(slices)
-	totalFill := 0.0
-	for i := 0; i < slices; i++ {
-		delayMs := 10 + rand.Intn(40)
-		time.Sleep(time.Duration(delayMs) * time.Millisecond)
-		fill, _ := e.paperFill(&Order{
-			LimitPrice: order.LimitPrice,
-			Qty:        sliceQty,
-			Side:       order.Side,
-		})
-		totalFill += fill * sliceQty
-	}
-	return totalFill / order.Qty, nil
-}
-
-func (e *ExecutionEngine) executeIceberg(order *Order, params map[string]interface{}) (float64, error) {
-	nSlices := 3
-	if n, ok := params["n_slices"].(int); ok {
-		nSlices = n
-	}
-	sliceQty := order.Qty / float64(nSlices)
-	totalFill := 0.0
-	for i := 0; i < nSlices; i++ {
-		time.Sleep(30 * time.Millisecond)
-		fill, _ := e.paperFill(&Order{
-			LimitPrice: order.LimitPrice,
-			Qty:        sliceQty,
-			Side:       order.Side,
-		})
-		totalFill += fill * sliceQty
-	}
-	return totalFill / order.Qty, nil
+	return 0, fmt.Errorf("modelock: LIVE execution is locked — no broker integration exists and none may be added without certification")
 }
 
 func (e *ExecutionEngine) signalToOrder(signal map[string]interface{}) *Order {

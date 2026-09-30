@@ -30,6 +30,24 @@ const KRAKEN_PAIR_KEY: &str = "XXBTZUSD";
 const SYMBOL: &str = "BTC/USD";
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
 
+/// PAPER/LIVE lock: terminate unless PAPER_MODE=true and
+/// LIVE_TRADING_ENABLED is not "true". Mirrors apps/modelock (Go).
+fn require_paper() {
+    let is_true = |v: &str| v.trim().eq_ignore_ascii_case("true");
+    let paper = env::var("PAPER_MODE").map(|v| is_true(&v)).unwrap_or(false);
+    let live_flag = env::var("LIVE_TRADING_ENABLED")
+        .map(|v| is_true(&v))
+        .unwrap_or(false);
+    if live_flag || !paper {
+        eprintln!(
+            "modelock: market-data-service refusing to start: PAPER_MODE must be \"true\" \
+             and LIVE_TRADING_ENABLED must not be \"true\" (LIVE is locked)"
+        );
+        std::process::exit(1);
+    }
+    println!("modelock: market-data-service started in PAPER mode (LIVE locked)");
+}
+
 async fn serve_health(ready: Arc<AtomicBool>) -> std::io::Result<()> {
     let port = env::var("HEALTH_PORT").unwrap_or_else(|_| "8090".to_string());
     let listener = TcpListener::bind(format!("0.0.0.0:{port}")).await?;
@@ -125,6 +143,10 @@ mod tests {
 
 #[tokio::main]
 async fn main() {
+    // PAPER/LIVE lock: fail closed unless explicitly in paper mode.
+    // LIVE is locked — no configuration can enable it.
+    require_paper();
+
     let ready = Arc::new(AtomicBool::new(false));
     let health_ready = Arc::clone(&ready);
     tokio::spawn(async move {
