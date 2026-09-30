@@ -95,7 +95,9 @@ services:
 
   # ── Fusion Engine (CAFÉ-RC) ──────────────────────────────────────────────────
   fusion-engine:
-    build: ./apps/fusion-engine
+    build:
+      context: .
+      dockerfile: apps/fusion-engine/Dockerfile
     depends_on:
       kafka:
         condition: service_healthy
@@ -112,7 +114,9 @@ services:
 
   # ── Risk Engine (AEGIS Governor, 14 gates) ───────────────────────────────────
   risk-engine:
-    build: ./apps/risk-service
+    build:
+      context: .
+      dockerfile: apps/risk-service/Dockerfile
     depends_on:
       kafka:
         condition: service_healthy
@@ -149,7 +153,9 @@ services:
 
   # ── Execution Engine (VULTURE Protocol) ──────────────────────────────────────
   execution-engine:
-    build: ./apps/execution-service
+    build:
+      context: .
+      dockerfile: apps/execution-service/Dockerfile
     depends_on:
       kafka:
         condition: service_healthy
@@ -175,7 +181,9 @@ services:
 
   # ── Capital Allocator (Kelly) ────────────────────────────────────────────────
   capital-allocator:
-    build: ./apps/capital-allocator
+    build:
+      context: .
+      dockerfile: apps/capital-allocator/Dockerfile
     depends_on:
       kafka:
         condition: service_healthy
@@ -192,7 +200,9 @@ services:
 
   # ── Portfolio Service ────────────────────────────────────────────────────────
   portfolio-service:
-    build: ./apps/portfolio-service
+    build:
+      context: .
+      dockerfile: apps/portfolio-service/Dockerfile
     depends_on:
       postgres:
         condition: service_healthy
@@ -213,7 +223,9 @@ services:
 
   # ── Truth-Core (Hash-Chained Audit) ──────────────────────────────────────────
   truth-core:
-    build: ./apps/truth-core
+    build:
+      context: .
+      dockerfile: apps/truth-core/Dockerfile
     depends_on:
       postgres:
         condition: service_healthy
