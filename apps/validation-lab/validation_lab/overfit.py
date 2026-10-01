@@ -75,23 +75,55 @@ def deflated_sharpe_ratio(observed_sr, trial_sharpes, n_obs, skew=0.0, kurt=3.0)
     k = ts.size
     var_sr = max(float(np.var(ts, ddof=1)), 1e-12)
     sr0 = _null_benchmark(var_sr, k)
-    denom = np.sqrt(max(1e-12, 1 - skew * observed_sr + (kurt / 4.0) * observed_sr ** 2))
+    denom = np.sqrt(max(1e-12, 1 - skew * observed_sr + ((kurt - 1.0) / 4.0) * observed_sr ** 2))
     dsr = float(scipy_stats.norm.cdf((observed_sr - sr0) * np.sqrt(n_obs - 1) / denom))
     return dsr, float(sr0)
+
+
+def textbook_deflated_sharpe_ratio(observed_sr, trial_sharpes, n_obs,
+                                   periods_per_year, skew=0.0, kurt=3.0):
+    """Textbook per-period Deflated Sharpe Ratio.
+
+    Same Bailey & Lopez de Prado null benchmark as `deflated_sharpe_ratio`,
+    but computed in per-period units: the annualized observed Sharpe and the
+    trial-Sharpe dispersion are divided by sqrt(periods_per_year) before the
+    PSR z-score is formed. This avoids the shipped screen's sqrt(n_bars)
+    saturation and is reported for Gate-A review; it is candidate-local
+    (sensitivity trials only) until a campaign log supplies campaign-wide
+    trials. Returns (dsr, expected_sr_under_null_annualized).
+    """
+    ts = np.asarray(trial_sharpes, dtype=float)
+    ts = ts[np.isfinite(ts)]
+    if ts.size < 2:
+        raise ValueError("need >= 2 trial Sharpes to estimate null variance")
+    if periods_per_year <= 0:
+        raise ValueError("periods_per_year must be positive")
+    k = ts.size
+    var_sr = max(float(np.var(ts, ddof=1)), 1e-12)
+    sqrt_ppy = math.sqrt(periods_per_year)
+    sr_per = observed_sr / sqrt_ppy
+    sr0_per = _null_benchmark(var_sr / periods_per_year, k)
+    denom = math.sqrt(max(
+        1e-12,
+        1 - skew * sr_per + ((kurt - 1.0) / 4.0) * sr_per ** 2,
+    ))
+    dsr = float(scipy_stats.norm.cdf(
+        (sr_per - sr0_per) * math.sqrt(n_obs - 1) / denom))
+    return dsr, float(sr0_per * sqrt_ppy)
 
 
 def min_backtest_length(target_sr_annual, skew=0.0, kurt=3.0, alpha=0.05,
                         periods_per_year=24 * 365):
     """Minimum number of observations so target_sr is significant at level alpha.
 
-    Bailey et al.: minTRL = 1 + (1 - skew*SR + kurt/4*SR^2) * (z_alpha / SR)^2,
+    Bailey et al.: minTRL = 1 + (1 - skew*SR + (kurt-1)/4*SR^2) * (z_alpha / SR)^2,
     with SR in per-period units.
     """
     sr_per = target_sr_annual / np.sqrt(periods_per_year)
     if sr_per <= 0:
         raise ValueError("target_sr_annual must be positive")
     z = scipy_stats.norm.ppf(1 - alpha)
-    factor = 1 - skew * sr_per + (kurt / 4.0) * sr_per ** 2
+    factor = 1 - skew * sr_per + ((kurt - 1.0) / 4.0) * sr_per ** 2
     return int(1 + factor * (z / sr_per) ** 2)
 
 

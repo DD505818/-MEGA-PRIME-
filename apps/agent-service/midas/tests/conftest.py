@@ -44,7 +44,7 @@ def make_pass_report(**overrides):
             "max_pvalue": 0.05,
             "min_dsr": 0.95,
             "sensitivity_min_frac": 0.5,
-            "max_mc_loss_prob": 0.5,
+            "max_mc_loss_prob": 0.2,
         },
         "data": {
             "file": "coinbase_BTC-USD_1h.csv",
