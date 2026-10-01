@@ -12,7 +12,7 @@ Promotion bar (must be met or exceeded by the report's own config):
   MIDAS_MAX_PVALUE            default 0.05
   MIDAS_MIN_DSR               default 0.95
   MIDAS_SENSITIVITY_MIN_FRAC  default 0.5
-  MIDAS_MAX_MC_LOSS_PROB      default 0.5
+  MIDAS_MAX_MC_LOSS_PROB      default 0.20
 
 Demotion bar (PAPER outcomes; breaching either demotes a PROMOTED strategy):
   MIDAS_DEMOTE_MIN_SHARPE     default 0.0   (trailing per-trade Sharpe floor)
@@ -56,7 +56,7 @@ class Thresholds:
     max_pvalue: float = 0.05
     min_dsr: float = 0.95
     sensitivity_min_frac: float = 0.5
-    max_mc_loss_prob: float = 0.5
+    max_mc_loss_prob: float = 0.20
     # demotion bar (PAPER outcomes)
     demote_min_sharpe: float = 0.0
     demote_max_drawdown: float = 0.25
@@ -75,7 +75,7 @@ class Thresholds:
             max_pvalue=_f("MIDAS_MAX_PVALUE", 0.05),
             min_dsr=_f("MIDAS_MIN_DSR", 0.95),
             sensitivity_min_frac=_f("MIDAS_SENSITIVITY_MIN_FRAC", 0.5),
-            max_mc_loss_prob=_f("MIDAS_MAX_MC_LOSS_PROB", 0.5),
+            max_mc_loss_prob=_f("MIDAS_MAX_MC_LOSS_PROB", 0.20),
             demote_min_sharpe=_f("MIDAS_DEMOTE_MIN_SHARPE", 0.0),
             demote_max_drawdown=_f("MIDAS_DEMOTE_MAX_DRAWDOWN", 0.25),
             demote_min_fills=_i("MIDAS_DEMOTE_MIN_FILLS", 30),

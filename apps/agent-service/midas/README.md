@@ -75,7 +75,7 @@ demotes immediately:
 | `MIDAS_MAX_PVALUE` | `0.05` |
 | `MIDAS_MIN_DSR` | `0.95` |
 | `MIDAS_SENSITIVITY_MIN_FRAC` | `0.5` |
-| `MIDAS_MAX_MC_LOSS_PROB` | `0.5` |
+| `MIDAS_MAX_MC_LOSS_PROB` | `0.20` |
 | `MIDAS_DB_PATH` | `~/.omega-prime/midas.db` |
 | `MIDAS_DATASET_DIR` | `~/workspace/datasets/omega-prime` |
 
