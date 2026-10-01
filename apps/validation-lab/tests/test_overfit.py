@@ -21,6 +21,16 @@ def test_dsr_calibrated_at_null():
     assert abs(dsr - 0.5) < 1e-9
 
 
+def test_textbook_dsr_matches_per_period_anchor():
+    # Analysis anchor: SR 0.60, K=9, trial sd 0.15, Kraken 1h dev n=15316.
+    base = np.arange(9, dtype=float)
+    u = (base - base.mean()) / base.std(ddof=1)
+    trials = list(1.0 + 0.15 * u)
+    dsr, _ = overfit.textbook_deflated_sharpe_ratio(
+        0.60, trials, 15316, 8760, skew=-1.0, kurt=8.0)
+    assert abs(dsr - 0.688) < 0.01
+
+
 def test_dsr_penalizes_trial_count():
     # same best Sharpe from more trials -> strictly lower DSR
     def dsr_for(k):

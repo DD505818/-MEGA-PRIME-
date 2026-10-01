@@ -29,6 +29,20 @@ def test_purge_removes_label_overlap():
     assert not np.any((train >= t0 - 4) & (train < t0))
 
 
+def test_fold_metrics_counts_position_change_events():
+    r = np.zeros(100)
+    splits = walkforward.purged_cv_splits(100, 4, embargo_pct=0.0)
+    pos = np.zeros(100)
+    pos[25:60] = 1.0   # event at 25; carried into fold 3 at 50 with no new event
+    pos[60:80] = 0.0   # event at 60
+    pos[80:] = -1.0    # event at 80
+    folds = walkforward.fold_metrics(r, splits, 24 * 365, positions=pos)
+    s = walkforward.summarize(folds)
+    assert s["oos_trades_per_fold"] == [0, 1, 1, 1]
+    assert s["oos_trades"] == 3
+    assert s["oos_trades_min_per_fold"] == 0
+
+
 def test_fold_metrics_shape():
     rng = np.random.default_rng(0)
     r = rng.normal(0.0001, 0.01, size=500)

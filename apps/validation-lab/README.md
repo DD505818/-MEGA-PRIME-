@@ -81,12 +81,12 @@ Every stage runs on **after-cost** returns. Stages run in order; the first
 | # | Stage | What it does | Pass criterion (defaults) |
 |---|-------|--------------|---------------------------|
 | 1 | `data_integrity` | SHA-256 of the CSV vs the venue `MANIFEST.json`; schema/OHLC/monotonicity checks | loads, hash matches |
-| 2 | `costs` | turnover × (fee+spread), funding on \|position\|; stress at 1x/2x/3x | net Sharpe > `min_net_sharpe` (0.0) |
-| 3 | `walkforward` | purged K-fold CV with embargo (Lopez de Prado): training labels overlapping a test fold are purged, an embargo zone after each fold is dropped | mean OOS fold Sharpe ≥ `min_oos_sharpe` (0.5) **and** ≥ `min_positive_fold_frac` (0.6) of folds positive |
+| 2 | `costs` | turnover × (fee+spread), funding on \|position\|; stress at 1x/2x/3x | net Sharpe > `min_net_sharpe` (0.0), 2x net Sharpe > `cost_stress_2x_min_sharpe` (0.0), and 3x net Sharpe ≥ `cost_stress_3x_min_sharpe` (-0.5) |
+| 3 | `walkforward` | purged K-fold CV with embargo (Lopez de Prado): training labels overlapping a test fold are purged, an embargo zone after each fold is dropped | mean OOS fold Sharpe ≥ `min_oos_sharpe` (0.5), ≥ `min_positive_fold_frac` (0.6) of folds positive, ≥ `min_oos_trades` (100) total OOS position changes, and ≥ `min_oos_trades_per_fold` (10) per fold |
 | 4 | `nulls` | sign-flip permutation p-value; random-timing (circular position shift) p-value; buy-and-hold Sharpe-gap test | both p-values ≤ `max_pvalue` (0.05) |
 | 5 | `bootstrap` | stationary bootstrap (Politis–Romano, geometric blocks) CI for Sharpe | 95% CI lower bound > 0 |
-| 6 | `montecarlo` | Student-t (MLE fit) and 2-state regime-switching path simulations | P(total return < 0) ≤ `max_mc_loss_prob` (0.5) under regime-switching |
-| 7 | `overfit` | ±20% parameter perturbation (must survive); deflated Sharpe ratio vs all tried configs; track-record ≥ minimum backtest length | DSR ≥ `min_dsr` (0.95), sensitivity survives, length adequate |
+| 6 | `montecarlo` | Student-t (MLE fit) and 2-state regime-switching path simulations | P(total return < 0) ≤ `max_mc_loss_prob` (0.20) under regime-switching |
+| 7 | `overfit` | ±20% parameter perturbation (must survive); deflated Sharpe ratio vs all tried configs; track-record ≥ minimum backtest length | DSR ≥ `min_dsr` (0.95), sensitivity survives, length adequate; textbook per-period DSR is reported for Gate-A review against `textbook_dsr_gate_a_floor` (0.90), not used as a lab verdict gate |
 
 ### Methodological notes
 
@@ -101,7 +101,10 @@ Every stage runs on **after-cost** returns. Stages run in order; the first
   Sharpe statistic under H0.
 - **Deflated Sharpe.** Selects against multiple testing: the more
   configurations tried, the higher the bar (`trial_sharpes` come from the
-  sensitivity perturbations plus the base config).
+  sensitivity perturbations plus the base config). The reported
+  `textbook_dsr` uses per-period units for Gate-A review; until the campaign
+  log exists, both DSR figures are candidate-local and do not correct for
+  campaign-wide search.
 - **Deterministic.** Every stochastic stage draws from `np.random.default_rng`
   seeded from `config.seed` (+ stage offset). Same inputs → same report,
   bit for bit. No network calls anywhere.

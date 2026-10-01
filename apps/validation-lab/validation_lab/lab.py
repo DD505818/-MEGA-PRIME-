@@ -2,8 +2,8 @@
 
 Stage order (all on AFTER-COST returns):
   1. data_integrity  - SHA-256 verified load of the frozen dataset
-  2. costs           - net returns after fees/spread/funding; stress at 1x/2x/3x
-  3. walkforward     - purged CV with embargo; out-of-sample Sharpe per fold
+  2. costs           - net returns after fees/spread/funding; 2x/3x stress gated
+  3. walkforward     - purged CV with embargo; OOS Sharpe + trade-count gates
   4. nulls           - permutation + random-timing p-values
   5. bootstrap       - stationary bootstrap CI for Sharpe
   6. montecarlo      - fat-tailed and regime-switching path simulations
@@ -43,12 +43,17 @@ class LabConfig:
     seed: int = 42
     # pass thresholds
     min_net_sharpe: float = 0.0
+    cost_stress_2x_min_sharpe: float = 0.0  # strict gate: 2x net Sharpe > this
+    cost_stress_3x_min_sharpe: float = -0.5  # floor: 3x net Sharpe >= this
     min_oos_sharpe: float = 0.5
     min_positive_fold_frac: float = 0.6
+    min_oos_trades: int = 100
+    min_oos_trades_per_fold: int = 10
     max_pvalue: float = 0.05
     min_dsr: float = 0.95
+    textbook_dsr_gate_a_floor: float = 0.90  # reported Gate-A floor, not a lab verdict gate
     sensitivity_min_frac: float = 0.5
-    max_mc_loss_prob: float = 0.5
+    max_mc_loss_prob: float = 0.20
 
     def to_dict(self):
         return asdict(self)
@@ -106,8 +111,16 @@ def run_gauntlet(csv_path, signal_factory, base_params, config=None,
         cfg.funding_annual_bps, ppy)
     c["net_max_drawdown"] = max_drawdown(net)
     c["net_ann_return"] = annualized_return(net, ppy)
-    thr = {"min_net_sharpe": cfg.min_net_sharpe}
-    if c["net_sharpe"] > cfg.min_net_sharpe:
+    stress_2x = c["cost_stress"]["2x"]["net_sharpe"]
+    stress_3x = c["cost_stress"]["3x"]["net_sharpe"]
+    thr = {"min_net_sharpe": cfg.min_net_sharpe,
+           "cost_stress_2x_min_sharpe": cfg.cost_stress_2x_min_sharpe,
+           "cost_stress_2x_operator": ">",
+           "cost_stress_3x_min_sharpe": cfg.cost_stress_3x_min_sharpe,
+           "cost_stress_3x_operator": ">="}
+    if (c["net_sharpe"] > cfg.min_net_sharpe
+            and stress_2x > cfg.cost_stress_2x_min_sharpe
+            and stress_3x >= cfg.cost_stress_3x_min_sharpe):
         stages["costs"] = _stage("costs", "PASS", _jsonable(c), thr)
     else:
         fail_fast("costs", _jsonable(c), thr)
@@ -115,11 +128,27 @@ def run_gauntlet(csv_path, signal_factory, base_params, config=None,
 
     # ---- 3. walk-forward (purged CV + embargo) ----
     splits = walkforward.purged_cv_splits(len(net), cfg.n_folds, cfg.embargo_pct)
-    wf = walkforward.summarize(walkforward.fold_metrics(net, splits, ppy))
+    wf = walkforward.summarize(walkforward.fold_metrics(net, splits, ppy,
+                                                        positions=pos_arr))
+    oos_trades = int(wf.get("oos_trades", 0))
+    oos_min_fold = int(wf.get("oos_trades_min_per_fold", 0))
+    trade_gate_passed = (oos_trades >= cfg.min_oos_trades
+                         and oos_min_fold >= cfg.min_oos_trades_per_fold)
+    wf["oos_trade_gate"] = {
+        "passed": bool(trade_gate_passed),
+        "reason": None if trade_gate_passed else (
+            f"OOS trade count gate failed: total {oos_trades} < "
+            f"{cfg.min_oos_trades} or min per fold {oos_min_fold} < "
+            f"{cfg.min_oos_trades_per_fold}"
+        ),
+    }
     thr = {"min_oos_sharpe": cfg.min_oos_sharpe,
-           "min_positive_fold_frac": cfg.min_positive_fold_frac}
+           "min_positive_fold_frac": cfg.min_positive_fold_frac,
+           "min_oos_trades": cfg.min_oos_trades,
+           "min_oos_trades_per_fold": cfg.min_oos_trades_per_fold}
     if (wf["mean_test_sharpe"] >= cfg.min_oos_sharpe
-            and wf["positive_fold_frac"] >= cfg.min_positive_fold_frac):
+            and wf["positive_fold_frac"] >= cfg.min_positive_fold_frac
+            and trade_gate_passed):
         stages["walkforward"] = _stage("walkforward", "PASS", _jsonable(wf), thr)
     else:
         fail_fast("walkforward", _jsonable(wf), thr)
@@ -164,11 +193,18 @@ def run_gauntlet(csv_path, signal_factory, base_params, config=None,
     kurt = float(scipy_stats.kurtosis(net) + 3.0)
     dsr, sr0 = overfit.deflated_sharpe_ratio(
         c["net_sharpe"], sens["trial_sharpes"], len(net), skew, kurt)
+    textbook_dsr, textbook_sr0 = overfit.textbook_deflated_sharpe_ratio(
+        c["net_sharpe"], sens["trial_sharpes"], len(net), ppy, skew, kurt)
     req_len = overfit.min_backtest_length(max(c["net_sharpe"], 1e-9), skew, kurt,
                                           periods_per_year=ppy)
     om = {"sensitivity": {k: v for k, v in sens.items() if k != "trial_sharpes"},
           "trial_sharpes": sens["trial_sharpes"],
           "deflated_sharpe": dsr, "expected_sr_under_null": sr0,
+          "textbook_dsr": textbook_dsr,
+          "textbook_expected_sr_under_null": textbook_sr0,
+          "textbook_dsr_scope": "candidate-local sensitivity trials; "
+                                "campaign-wide trial count is not included "
+                                "until the campaign log exists",
           "n_obs": len(net), "min_backtest_length": req_len,
           "skew": skew, "kurtosis": kurt}
     thr = {"min_dsr": cfg.min_dsr, "sensitivity_must_survive": True,
