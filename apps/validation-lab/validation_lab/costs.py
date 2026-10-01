@@ -15,6 +15,10 @@ import pandas as pd
 
 from .metrics import sharpe, total_return
 
+# Version of the after-cost accounting model. Bumped only when the formulas
+# above change; persisted in every report's lineage block.
+COST_MODEL_VERSION = "1.0.0"
+
 
 def apply_costs(gross_returns, positions, fee_bps, spread_bps,
                 funding_annual_bps=0.0, periods_per_year=24 * 365,

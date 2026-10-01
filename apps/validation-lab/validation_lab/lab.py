@@ -15,6 +15,8 @@ receives only the base params (sensitivity perturbations are prescribed).
 """
 
 import json
+import os
+import subprocess
 from dataclasses import asdict, dataclass, field
 
 import numpy as np
@@ -54,6 +56,14 @@ class LabConfig:
     textbook_dsr_gate_a_floor: float = 0.90  # reported Gate-A floor, not a lab verdict gate
     sensitivity_min_frac: float = 0.5
     max_mc_loss_prob: float = 0.20
+    # --- validation protocol v2 lineage ---
+    # Caller-supplied per hypothesis; the lab fills the rest (data hash,
+    # code commit, cost/MC engine versions) so every report is auditable.
+    validation_protocol_version: str = "v2"  # "v1" = campaigns #1-2 legacy
+    rng_seed: int | None = None              # defaults to `seed` when unset
+    strategy_spec_hash: str = ""
+    preregistration_id: str = ""
+    hypothesis_number: int = 0
 
     def to_dict(self):
         return asdict(self)
@@ -176,13 +186,17 @@ def run_gauntlet(csv_path, signal_factory, base_params, config=None,
         fail_fast("bootstrap", _jsonable(bs), thr)
         return _report(candidate, cfg, desc, stages, "FAIL", failed_stage)
 
-    # ---- 6. monte carlo ----
-    mc = montecarlo.run(net, cfg.n_mc_paths, cfg.seed + 4, ppy)
-    rs_loss = mc["regime_switching"]["prob_total_return_negative"]
-    thr = {"max_mc_loss_prob": cfg.max_mc_loss_prob}
-    if rs_loss <= cfg.max_mc_loss_prob:
+    # ---- 6. monte carlo (protocol v2: two-path engine) ----
+    mc = montecarlo.run_v2(net, cfg.n_mc_paths, cfg.seed + 4, ppy,
+                            max_loss_prob=cfg.max_mc_loss_prob)
+    dec = mc["decision"]
+    thr = {"max_mc_loss_prob": cfg.max_mc_loss_prob,
+           "mc_verdict_must_be": "PASS"}
+    if dec["mc_verdict"] == "PASS":
         stages["montecarlo"] = _stage("montecarlo", "PASS", _jsonable(mc), thr)
     else:
+        # FAIL and INDETERMINATE both fail the stage: INDETERMINATE means
+        # the gate could not measure the strategy, so it cannot advance.
         fail_fast("montecarlo", _jsonable(mc), thr)
         return _report(candidate, cfg, desc, stages, "FAIL", failed_stage)
 
@@ -232,6 +246,34 @@ def _jsonable(obj):
     return obj
 
 
+def _code_commit():
+    """Best-effort git commit of the lab source; UNKNOWN when unavailable."""
+    try:
+        out = subprocess.run(
+            ["git", "-C", os.path.dirname(os.path.abspath(__file__)),
+             "rev-parse", "HEAD"],
+            capture_output=True, text=True, timeout=10)
+        commit = out.stdout.strip()
+        return commit if commit else "UNKNOWN"
+    except Exception:
+        return "UNKNOWN"
+
+
+def _lineage(cfg, desc):
+    data_hash = desc.get("sha256") if isinstance(desc, dict) else None
+    return {
+        "strategy_spec_hash": cfg.strategy_spec_hash or "UNKNOWN",
+        "data_snapshot_hash": data_hash or "UNKNOWN",
+        "code_commit": _code_commit(),
+        "validation_protocol_version": cfg.validation_protocol_version,
+        "rng_seed": cfg.rng_seed if cfg.rng_seed is not None else cfg.seed,
+        "cost_model_version": costs.COST_MODEL_VERSION,
+        "mc_engine_version": montecarlo.MC_ENGINE_VERSION,
+        "preregistration_id": cfg.preregistration_id or "UNKNOWN",
+        "hypothesis_number": cfg.hypothesis_number,
+    }
+
+
 def _report(candidate, cfg, desc, stages, verdict, failed_stage):
     return {
         "candidate": candidate,
@@ -240,6 +282,7 @@ def _report(candidate, cfg, desc, stages, verdict, failed_stage):
         "config": cfg.to_dict(),
         "data": desc,
         "stages": stages,
+        "lineage": _lineage(cfg, desc),
         "doctrine": "EDGE NOT PROVEN unless verdict == PASS on all stages; "
                     "PASS here qualifies for PAPER only, never LIVE.",
     }
