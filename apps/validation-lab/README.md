@@ -35,7 +35,7 @@ only thin re-export shims — new code imports `validation_lab` directly.
 | `metrics.py` | Sharpe, Sortino, max drawdown, profit factor, total/annualized return, causal strategy returns, per-candidate metric table |
 | `overfit.py` | Deflated Sharpe (ratio + research probability), probabilistic Sharpe, CSCV/PBO, parameter sensitivity, minimum backtest length |
 | `bootstrap.py` | Stationary + circular-block Sharpe CIs; empirical contiguous-block path bootstrap (terminal return / drawdown / ruin) |
-| `montecarlo.py` | Parametric Monte Carlo: Student-t fat tails, 2-state regime switching |
+| `montecarlo.py` | MC v2 two-path engine: hardened parametric MC (dense) + regime-aware block/event bootstrap (sparse); PASS/FAIL/INDETERMINATE |
 | `nulls.py` | Sign-flip permutation, random-timing, buy-and-hold null tests |
 | `costs.py` | After-cost accounting (fees/spread/funding) with 1x/2x/3x stress |
 | `cli.py` | `omega-validation-lab` research CLI: `prepare` / `verify` / `folds` / `evaluate` |
@@ -85,7 +85,7 @@ Every stage runs on **after-cost** returns. Stages run in order; the first
 | 3 | `walkforward` | purged K-fold CV with embargo (Lopez de Prado): training labels overlapping a test fold are purged, an embargo zone after each fold is dropped | mean OOS fold Sharpe ≥ `min_oos_sharpe` (0.5), ≥ `min_positive_fold_frac` (0.6) of folds positive, ≥ `min_oos_trades` (100) total OOS position changes, and ≥ `min_oos_trades_per_fold` (10) per fold |
 | 4 | `nulls` | sign-flip permutation p-value; random-timing (circular position shift) p-value; buy-and-hold Sharpe-gap test | both p-values ≤ `max_pvalue` (0.05) |
 | 5 | `bootstrap` | stationary bootstrap (Politis–Romano, geometric blocks) CI for Sharpe | 95% CI lower bound > 0 |
-| 6 | `montecarlo` | Student-t (MLE fit) and 2-state regime-switching path simulations | P(total return < 0) ≤ `max_mc_loss_prob` (0.20) under regime-switching |
+| 6 | `montecarlo` | MC v2 two-path engine (see below) | P(total return < 0) ≤ `max_mc_loss_prob` (0.20) on the path's decision generator; INDETERMINATE also fails the stage |
 | 7 | `overfit` | ±20% parameter perturbation (must survive); deflated Sharpe ratio vs all tried configs; track-record ≥ minimum backtest length | DSR ≥ `min_dsr` (0.95), sensitivity survives, length adequate; textbook per-period DSR is reported for Gate-A review against `textbook_dsr_gate_a_floor` (0.90), not used as a lab verdict gate |
 
 ### Methodological notes
@@ -108,6 +108,66 @@ Every stage runs on **after-cost** returns. Stages run in order; the first
 - **Deterministic.** Every stochastic stage draws from `np.random.default_rng`
   seeded from `config.seed` (+ stage offset). Same inputs → same report,
   bit for bit. No network calls anywhere.
+
+### Monte Carlo v2 (validation protocol v2)
+
+The v1 parametric Student-t estimators degenerated on zero-inflated
+(sparse) return series — e.g. a strategy active 3 of 7 days produced
+df ≈ 0.1 and scale ≈ 1e-14, a formally computed gate decision carrying
+almost no statistical information. MC v2 (`montecarlo.MC_ENGINE_VERSION =
+"2.0.0"`) is a two-path engine:
+
+- **Dense path** — the v1 machinery (Student-t fat tails + 2-state
+  regime-switching), hardened with predetermined fit diagnostics. A fit is
+  accepted only if all parameters are finite, 2.1 ≤ df ≤ 1e12, and
+  scale ≥ 1e-10. The decision generator stays `regime_switching`.
+- **Sparse path** — a regime-aware block/event bootstrap. It models
+  P(R_t ≠ 0) separately from R_t | R_t ≠ 0: inactive gaps are resampled
+  from the empirical gap distribution; active blocks (maximal nonzero
+  runs) are resampled with replacement from regime-conditioned pools,
+  preserving durations, within-block serial dependence, signs, empirical
+  loss tails, directional exposure, and cost realization; a simulated
+  per-bar 2-state volatility-regime path preserves regime occupancy and
+  transitions and conditions block selection. A second estimator (fixed
+  circular block bootstrap) and a seed-split rerun guard against
+  estimator disagreement and simulation non-convergence.
+
+Path selection is by **predetermined diagnostics computed before any gate
+decision** and never by result favorability: `zero_frac ≥ 0.20` selects
+the sparse path (with ≥ 30 nonzero observations required). The gated
+quantity and threshold are unchanged: P(simulated total return < 0) ≤
+`max_mc_loss_prob` (0.20).
+
+The MC verdict is **PASS / FAIL / INDETERMINATE**. INDETERMINATE triggers
+include: insufficient observations or nonzero observations, too few
+active blocks, unstable parameter estimation, seed-split disagreement
+beyond MC noise, material disagreement between the two sparse
+estimators, and any nonfinite summary. INDETERMINATE **cannot advance** —
+the lab maps it to stage FAIL. NaNs can never reach a gate decision;
+all fit diagnostics persist in the report's `diagnostics` block.
+
+### Report lineage and protocol versioning
+
+`validation_protocol_version` is `"v2"` for this engine (`"v1"` denotes the
+campaign #1–2 legacy engine — never compare v1 and v2 MC numbers across
+protocols). Every report carries a `lineage` block:
+
+```json
+"lineage": {
+  "strategy_spec_hash": "…", "data_snapshot_hash": "…",
+  "code_commit": "…", "validation_protocol_version": "v2",
+  "rng_seed": 42, "cost_model_version": "1.0.0",
+  "mc_engine_version": "2.0.0", "preregistration_id": "…",
+  "hypothesis_number": 0
+}
+```
+
+`LabConfig` accepts the caller-supplied fields (`strategy_spec_hash`,
+`preregistration_id`, `hypothesis_number`, `rng_seed` — defaulting to
+`seed`); the lab fills in the data hash, code commit (best-effort
+`git rev-parse`, else `"UNKNOWN"`), and component versions. Stage
+names/order and PASS/FAIL/NOT RUN stage semantics are unchanged, and all
+new fields are additive, so downstream JSON consumers are unaffected.
 
 ## Report format
 
