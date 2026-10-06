@@ -64,6 +64,6 @@ describe('doctrine constants', () => {
   });
 
   it('flags MC v2 as in review and unmerged', () => {
-    expect(MC_V2_STATUS).toBe('in review (PR #75, unmerged)');
+    expect(MC_V2_STATUS).toBe('merged (PR #75) — protocol v2 is the lab');
   });
 });
