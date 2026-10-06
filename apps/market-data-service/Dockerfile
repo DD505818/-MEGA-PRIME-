@@ -12,7 +12,7 @@ RUN cargo build --release --locked
 
 FROM debian:bookworm-slim
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates libssl3 zlib1g \
+    && apt-get install -y --no-install-recommends ca-certificates libssl3 zlib1g wget \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/target/release/market-data-service /usr/local/bin/market-data-service
 USER 65532:65532
