@@ -32,9 +32,19 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,SASL_PLAINTEXT://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,SASL_PLAINTEXT://kafka:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,SASL_PLAINTEXT:SASL_PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      # SASL/SCRAM-SHA-512 (staged — see docs/kafka-acls.md). PLAINTEXT stays until
+      # clients are wired for SASL; then it is removed as the final cutover step.
+      KAFKA_SASL_ENABLED_MECHANISMS: SCRAM-SHA-512
+      KAFKA_AUTHORIZER_CLASS_NAME: kafka.security.auth.SimpleAclAuthorizer
+      KAFKA_ALLOW_EVERYONE_IF_NO_ACL_FOUND: "false"
+      KAFKA_OPTS: -Djava.security.auth.login.config=/etc/kafka/kafka_server_jaas.conf
+    volumes:
+      - ./infrastructure/kafka/kafka_server_jaas.conf:/etc/kafka/kafka_server_jaas.conf:ro
     healthcheck:
       test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "kafka:9092"]
       interval: 15s
@@ -51,6 +61,35 @@ services:
       interval: 5s
       retries: 5
 
+  redis-replica:
+    image: redis:7.2.5-alpine
+    restart: unless-stopped
+    command: redis-server --replicaof redis 6379 --maxmemory 512mb --maxmemory-policy allkeys-lru
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "redis-cli", "info", "replication"]
+      interval: 10s
+      retries: 5
+
+  # NOTE (docs/redis-ha.md): Sentinel runs failover elections, but our services
+  # use plain redis:// clients with no Sentinel awareness — client failover is
+  # MANUAL until clients are made Sentinel-aware. Do not assume otherwise.
+  redis-sentinel:
+    image: redis:7.2.5-alpine
+    restart: unless-stopped
+    command: redis-sentinel /etc/redis/sentinel.conf
+    volumes:
+      - ./infrastructure/redis:/etc/redis
+    ports:
+      - "26379:26379"
+    depends_on:
+      redis:
+        condition: service_healthy
+      redis-replica:
+        condition: service_started
+
   postgres:
     image: postgres:16.4-alpine
     restart: unless-stopped
@@ -64,6 +103,32 @@ services:
       - ./infra/db-migrations/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d omega"]
+      interval: 10s
+      retries: 10
+
+  # Async streaming replica for the TruthCore / audit read path.
+  # Rebuilds from the primary via pg_basebackup on first boot only
+  # (PG_VERSION present => reuse existing data). Promote manually if needed.
+  postgres-replica:
+    image: postgres:16.4-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-omega}
+      PGUSER: postgres
+    volumes:
+      - pgreplica:/var/lib/postgresql/data
+    command: >
+      sh -c '
+      if [ ! -s /var/lib/postgresql/data/PG_VERSION ]; then
+        rm -rf /var/lib/postgresql/data/*;
+        PGPASSWORD="$${POSTGRES_PASSWORD:-omega}" pg_basebackup -h postgres -U postgres -D /var/lib/postgresql/data -Fp -Xs -P -R;
+      fi;
+      exec docker-entrypoint.sh postgres -c hot_standby=on -c hot_standby_feedback=on'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
       retries: 10
 
@@ -391,3 +456,4 @@ services:
 
 volumes:
   pgdata:
+  pgreplica:
