@@ -98,4 +98,4 @@ export const AEGIS_GATES: AegisGate[] = [
 ];
 
 /** Validation-lab Monte Carlo v2 engine status: merged implementation is not yet on main. */
-export const MC_V2_STATUS = 'in review (PR #75, unmerged)';
+export const MC_V2_STATUS = 'merged (PR #75) — protocol v2 is the lab';
