@@ -9,3 +9,6 @@ build
 target/
 backtests/artifacts/
 backtests/data/raw/
+
+.next/
+tsconfig.tsbuildinfo
