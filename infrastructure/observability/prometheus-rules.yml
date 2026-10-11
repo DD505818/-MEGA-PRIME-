@@ -1,0 +1,70 @@
+# ΩMEGA PRIME Δ — SLO measurement rules (Prometheus)
+#
+# ═══════════════════════════════════════════════════════════════════════════
+# HONESTY NOTE — READ FIRST
+# These rules MEASURE service availability and MTTR from scraped targets.
+# The 99.95% availability / ≤30s MTTR SLO can only be DEMONSTRATED on a
+# long-running production deployment. This file makes NO backfilled, synthetic,
+# or projected compliance claims. Until 30 days of real scrapes exist, the
+# availability_30d series is warming up and must be presented as such.
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Assumptions: Prometheus scrapes (a) itself / blackbox-style `up` per target,
+# (b) cAdvisor for container start timestamps (container_start_time_seconds).
+# Without cAdvisor the mttr_* rules have no input and will simply be absent —
+# they degrade to "no data", never to a fabricated zero.
+
+groups:
+  - name: omega-prime.slo
+    interval: 30s
+    rules:
+      # Per-service 5-minute rolling availability from target up-ness.
+      - record: omega:service_up_5m
+        expr: avg_over_time(up{job=~"omega-.+"}[5m])
+
+      # 30-day availability per service — the SLO numerator.
+      - record: omega:availability_30d
+        expr: avg_over_time(omega:service_up_5m[30d])
+
+      # Fleet-wide availability (mean across services).
+      - record: omega:fleet_availability_30d
+        expr: avg(omega:availability_30d)
+
+      # Error budget remaining for 99.95% (0.05% allowed downtime ≈ 21.9 min/month).
+      - record: omega:error_budget_remaining_ratio
+        expr: (0.0005 - (1 - omega:fleet_availability_30d)) / 0.0005
+
+      # MTTR proxy: for each container, seconds since its most recent start,
+      # sampled only in the 10 minutes after a start (i.e. recovery windows).
+      - record: omega:container_age_seconds
+        expr: time() - container_start_time_seconds
+
+      # Mean recovery time over restart events in the last 7 days, per service.
+      # (A restart counts as a recovery event; steady-state containers contribute
+      # nothing — this is time-to-healthy after a start, not ping latency.)
+      - record: omega:mttr_7d_seconds
+        expr: >
+          avg by (name) (
+            max_over_time(omega:container_age_seconds[7d])
+            * (changes(container_start_time_seconds[7d]) > 0)
+          )
+
+      - alert: OmegaAvailabilityBelowSLO
+        expr: omega:fleet_availability_30d < 0.9995
+        for: 15m
+        labels:
+          severity: critical
+          slo: "99.95-availability"
+        annotations:
+          summary: "ΩMEGA PRIME fleet 30d availability below 99.95%"
+          description: "fleet_availability_30d = {{ $value }}. Error budget exhausted; freeze deploys, investigate."
+
+      - alert: OmegaMTTRAboveSLO
+        expr: omega:mttr_7d_seconds > 30
+        for: 15m
+        labels:
+          severity: warning
+          slo: "30s-mttr"
+        annotations:
+          summary: "ΩMEGA PRIME 7d MTTR above 30s for {{ $labels.name }}"
+          description: "mttr_7d_seconds = {{ $value }}s. Check restart loops and healthcheck start_period."
